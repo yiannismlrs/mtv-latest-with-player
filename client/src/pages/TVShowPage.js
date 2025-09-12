@@ -4,7 +4,7 @@ import {
   Play, Download, Share, Star, Calendar, Clock,
   ArrowLeft, Cast as CastIcon, Heart, Bookmark, Youtube
 } from 'lucide-react';
-import { tvShowsAPI, getImageUrl, getBackdropUrl } from '../utils/api';
+import { tvShowsAPI, getImageUrl, getBackdropUrl, watchlistAPI, openInSPlayer, getSPlayerUrl } from '../utils/api';
 import DetailTabs from '../components/DetailTabs';
 
 export default function TVShowPage() {
@@ -12,11 +12,15 @@ export default function TVShowPage() {
   const navigate = useNavigate();
   const [show, setShow] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isInWatchlist, setIsInWatchlist] = useState(false);
 
   const fetchDetails = useCallback(async () => {
     try {
       const res = await tvShowsAPI.getDetails(id);
-      if (res?.data?.success) setShow(res.data.tvshow);
+      if (res?.data?.success) {
+        setShow(res.data.tvshow);
+        setIsInWatchlist(watchlistAPI.isInWatchlist(id, 'tv'));
+      }
     } catch (e) {
       console.error('Error fetching TV details:', e);
     } finally {
@@ -31,11 +35,45 @@ export default function TVShowPage() {
   const year = show?.first_air_date ? new Date(show.first_air_date).getFullYear() : '';
   const rating = typeof show?.vote_average === 'number' ? show.vote_average.toFixed(1) : 'N/A';
 
+  const handleWatch = () => {
+    if (show) {
+      const url = getSPlayerUrl(show, 'tv');
+      openInSPlayer(url, show.name);
+    }
+  };
+
+  const handleAddToWatchlist = () => {
+    if (show) {
+      if (isInWatchlist) {
+        watchlistAPI.removeFromWatchlist(show.id, 'tv');
+        setIsInWatchlist(false);
+      } else {
+        watchlistAPI.addToWatchlist(show, 'tv');
+        setIsInWatchlist(true);
+      }
+    }
+  };
+
+  const handleShare = () => {
+    if (navigator.share && show) {
+      navigator.share({
+        title: show.name,
+        text: `Check out ${show.name} on MTV`,
+        url: window.location.href
+      });
+    } else {
+      navigator.clipboard.writeText(window.location.href);
+      alert('Link copied to clipboard!');
+    }
+  };
+
+  const handleTrailer = () => {
+    const query = encodeURIComponent(`${show.name} ${year} trailer`);
+    window.open(`https://www.youtube.com/results?search_query=${query}`, '_blank');
+  };
+
   if (loading) return <div className="loading"><div className="spinner" /></div>;
   if (!show) return <div className="error-message"><h2>TV Show not found</h2></div>;
-
-  const onWatch = (links = show.streaming_links) =>
-    navigate('/watch', { state: { content: show, type: 'tv', streamingLinks: links } });
 
   return (
     <div className="detail-page">
@@ -73,21 +111,28 @@ export default function TVShowPage() {
       <div className="detail-content">
         <div className="primary-actions">
           {hasStreamingLinks && (
-            <button className="watch-button" onClick={() => onWatch()}>
+            <button className="watch-button" onClick={handleWatch}>
               <Play size={20} /> Watch
             </button>
           )}
           {hasDownloadLinks && (
-            <button className="download-button" onClick={() => console.log(show.download_links)}>
+            <button className="download-button" onClick={() => alert('Download feature coming soon!')}>
               <Download size={20} /> Download
             </button>
           )}
         </div>
 
         <div className="secondary-actions">
-          <button className="action-icon"><Bookmark size={18} /><span>Add List</span></button>
-          <button className="action-icon"><Youtube size={18} /><span>Trailer</span></button>
-          <button className="action-icon"><Share size={18} /><span>Share</span></button>
+          <button className="action-icon" onClick={handleAddToWatchlist}>
+            <Bookmark size={18} fill={isInWatchlist ? 'currentColor' : 'none'} />
+            <span>{isInWatchlist ? 'Remove' : 'Add List'}</span>
+          </button>
+          <button className="action-icon" onClick={handleTrailer}>
+            <Youtube size={18} /><span>Trailer</span>
+          </button>
+          <button className="action-icon" onClick={handleShare}>
+            <Share size={18} /><span>Share</span>
+          </button>
           <button className="action-icon"><Heart size={18} /><span>Favorite</span></button>
         </div>
 
@@ -97,12 +142,10 @@ export default function TVShowPage() {
           <div className="download-section">
             <h2>Watch Options</h2>
             <div className="download-links">
-              {show.streaming_links.map((link, i) => (
-                <button key={i} className="download-link" onClick={() => onWatch([link])}>
-                  <Play size={18} /><span>{link.provider}</span>
-                  <span style={{ marginLeft: 'auto' }}>{link.quality}</span>
-                </button>
-              ))}
+              <button className="download-link" onClick={handleWatch}>
+                <Play size={18} /><span>SPlayer</span>
+                <span style={{ marginLeft: 'auto' }}>HD</span>
+              </button>
             </div>
           </div>
         )}

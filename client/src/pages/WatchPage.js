@@ -1,54 +1,56 @@
 import React, { useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Settings } from 'lucide-react';
-
-const VIDSRC_EMBED = process.env.REACT_APP_VIDSRC_EMBED_URL || 'https://vidsrc.to/embed';
+import { ArrowLeft, Settings, ExternalLink } from 'lucide-react';
 
 export default function WatchPage() {
   const { state } = useLocation();
   const navigate = useNavigate();
-  const { content, type, streamingLinks } = state || {};
+  const { content, type } = state || {};
 
-  const src = useMemo(() => {
-    const link = streamingLinks?.[0]?.url;
-    if (link) return link;
-    if (content?.id && (type === 'movie' || type === 'tv')) {
-      return `${VIDSRC_EMBED}/${type}/${content.id}`;
-    }
-    return '';
-  }, [content, type, streamingLinks]);
-
-  if (!src) {
+  if (!content) {
     return (
       <div className="main-content">
         <button className="back-btn" onClick={() => navigate(-1)}><ArrowLeft /> Back</button>
         <div className="error-message">
-          <h2>Nothing to play</h2>
-          <p>Open a movie or TV show first and tap Watch.</p>
+          <h2>SPlayer Integration</h2>
+          <p>This page is no longer used. Content opens directly in SPlayer app.</p>
+          <button className="btn-primary" onClick={() => navigate('/')}>
+            Go Home
+          </button>
         </div>
       </div>
     );
   }
 
+  const openSPlayerWebsite = () => {
+    window.open('https://splayer.org', '_blank');
+  };
+
   return (
     <div className="watch-page">
       <div className="watch-header">
         <button className="back-btn" onClick={() => navigate(-1)}><ArrowLeft /> Back</button>
-        <h1 className="watch-title">{content?.title || content?.name || 'Player'}</h1>
+        <h1 className="watch-title">SPlayer Integration</h1>
         <div className="watch-controls">
-          <button className="control-btn" title="Settings"><Settings size={18}/></button>
+          <button className="control-btn" onClick={openSPlayerWebsite} title="Get SPlayer">
+            <ExternalLink size={18}/>
+          </button>
         </div>
       </div>
 
-      <div className="video-player">
-        <div className="player-container">
-          <iframe
-            className="player-iframe"
-            src={src}
-            allowFullScreen
-            title="Player"
-          />
+      <div className="main-content" style={{ textAlign: 'center', padding: '2rem' }}>
+        <h2>Content opens in SPlayer</h2>
+        <p>Movies and TV shows now open directly in the SPlayer application for the best viewing experience.</p>
+        
+        <div style={{ margin: '2rem 0' }}>
+          <button className="btn-primary" onClick={openSPlayerWebsite}>
+            <ExternalLink size={18} /> Download SPlayer
+          </button>
         </div>
+        
+        <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+          If you don't have SPlayer installed, clicking "Watch Now" will redirect you to download it.
+        </p>
       </div>
     </div>
   );

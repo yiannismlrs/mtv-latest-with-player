@@ -3,9 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Play, TrendingUp } from 'lucide-react';
 import ContentCard from '../components/ContentCard';
-import { moviesAPI, tvShowsAPI, getBackdropUrl } from '../utils/api';
-
-const VIDSRC_EMBED = process.env.REACT_APP_VIDSRC_EMBED_URL || 'https://vidsrc.to/embed';
+import { moviesAPI, tvShowsAPI, getBackdropUrl, openInSPlayer, getSPlayerUrl } from '../utils/api';
 
 export default function HomePage() {
   const [trendingMovies, setTrendingMovies] = useState([]);
@@ -43,29 +41,14 @@ export default function HomePage() {
     })();
   }, []);
 
-  const buildStreamingLinks = (item, type) => {
-    if (item?.streaming_links?.length) return item.streaming_links;
-    const path = type === 'movie' ? 'movie' : 'tv';
-    return [{
-      provider: 'VidSrc',
-      quality: 'HD',
-      type: 'embed',
-      url: `${VIDSRC_EMBED}/${path}/${item.id}`,
-    }];
-  };
-
   const handleContentClick = (item, type) => {
     navigate(`${type === 'movie' ? '/movie' : '/tv'}/${item.id}`);
   };
 
   const handleWatchClick = (item, type) => {
-    navigate('/watch', {
-      state: {
-        content: item,
-        type,
-        streamingLinks: buildStreamingLinks(item, type),
-      },
-    });
+    const url = getSPlayerUrl(item, type);
+    const title = item.title || item.name;
+    openInSPlayer(url, title);
   };
 
   const handleFeaturedWatch = () => {
@@ -75,8 +58,8 @@ export default function HomePage() {
   };
 
   const handleDownloadClick = (item) => {
-    // Placeholder for a future download modal
-    console.log('Download options:', item.download_links || []);
+    // Show download options or redirect to download page
+    alert('Download feature coming soon!');
   };
 
   if (loading) {

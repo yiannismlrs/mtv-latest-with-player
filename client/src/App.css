@@ -615,6 +615,39 @@ body {
   color: var(--primary-orange);
 }
 
+/* Cast Grid */
+.cast-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.cast-member {
+  text-align: center;
+}
+
+.cast-photo {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-bottom: 0.5rem;
+  border: 2px solid var(--border-color);
+}
+
+.cast-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.cast-character {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
 /* Detail Pages (Movie/TV Show) */
 .detail-page {
   background-color: var(--dark-bg);
@@ -1106,6 +1139,15 @@ body {
   
   .bottom-navigation .nav-label {
     font-size: 0.65rem;
+  }
+  
+  .cast-grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  }
+  
+  .cast-photo {
+    width: 60px;
+    height: 60px;
   }
 }
 

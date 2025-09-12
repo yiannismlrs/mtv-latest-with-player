@@ -4,7 +4,7 @@ import {
   Play, Download, Share, Star, Calendar, Clock,
   ArrowLeft, Cast as CastIcon, Heart, Bookmark, Youtube
 } from 'lucide-react';
-import { moviesAPI, getImageUrl, getBackdropUrl } from '../utils/api';
+import { moviesAPI, getImageUrl, getBackdropUrl, watchlistAPI, openInSPlayer, getSPlayerUrl } from '../utils/api';
 import DetailTabs from '../components/DetailTabs';
 
 export default function MoviePage() {
@@ -12,11 +12,15 @@ export default function MoviePage() {
   const navigate = useNavigate();
   const [movie, setMovie] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isInWatchlist, setIsInWatchlist] = useState(false);
 
   const fetchMovieDetails = useCallback(async () => {
     try {
       const res = await moviesAPI.getDetails(id);
-      if (res?.data?.success) setMovie(res.data.movie);
+      if (res?.data?.success) {
+        setMovie(res.data.movie);
+        setIsInWatchlist(watchlistAPI.isInWatchlist(id, 'movie'));
+      }
     } catch (e) {
       console.error('Error fetching movie details:', e);
     } finally {
@@ -33,6 +37,45 @@ export default function MoviePage() {
   const releaseYear = movie?.release_date ? new Date(movie.release_date).getFullYear() : '';
   const rating = typeof movie?.vote_average === 'number' ? movie.vote_average.toFixed(1) : 'N/A';
 
+  const handleWatch = () => {
+    if (movie) {
+      const url = getSPlayerUrl(movie, 'movie');
+      openInSPlayer(url, movie.title);
+    }
+  };
+
+  const handleAddToWatchlist = () => {
+    if (movie) {
+      if (isInWatchlist) {
+        watchlistAPI.removeFromWatchlist(movie.id, 'movie');
+        setIsInWatchlist(false);
+      } else {
+        watchlistAPI.addToWatchlist(movie, 'movie');
+        setIsInWatchlist(true);
+      }
+    }
+  };
+
+  const handleShare = () => {
+    if (navigator.share && movie) {
+      navigator.share({
+        title: movie.title,
+        text: `Check out ${movie.title} on MTV`,
+        url: window.location.href
+      });
+    } else {
+      // Fallback: copy to clipboard
+      navigator.clipboard.writeText(window.location.href);
+      alert('Link copied to clipboard!');
+    }
+  };
+
+  const handleTrailer = () => {
+    // Search for trailer on YouTube
+    const query = encodeURIComponent(`${movie.title} ${releaseYear} trailer`);
+    window.open(`https://www.youtube.com/results?search_query=${query}`, '_blank');
+  };
+
   if (loading) {
     return (
       <div className="loading"><div className="spinner" /></div>
@@ -47,9 +90,6 @@ export default function MoviePage() {
       </div>
     );
   }
-
-  const onWatch = (links = movie.streaming_links) =>
-    navigate('/watch', { state: { content: movie, type: 'movie', streamingLinks: links } });
 
   return (
     <div className="detail-page">
@@ -95,11 +135,12 @@ export default function MoviePage() {
         <div className="primary-actions">
           {hasStreamingLinks && (
             <button className="watch-button" onClick={() => onWatch()}>
+            <button className="watch-button" onClick={handleWatch}>
               <Play size={20} /> Watch
             </button>
           )}
           {hasDownloadLinks && (
-            <button className="download-button" onClick={() => console.log(movie.download_links)}>
+            <button className="download-button" onClick={() => alert('Download feature coming soon!')}>
               <Download size={20} /> Download
             </button>
           )}
@@ -107,9 +148,16 @@ export default function MoviePage() {
 
         {/* Secondary icons */}
         <div className="secondary-actions">
-          <button className="action-icon"><Bookmark size={18} /><span>Add List</span></button>
-          <button className="action-icon"><Youtube size={18} /><span>Trailer</span></button>
-          <button className="action-icon"><Share size={18} /><span>Share</span></button>
+          <button className="action-icon" onClick={handleAddToWatchlist}>
+            <Bookmark size={18} fill={isInWatchlist ? 'currentColor' : 'none'} />
+            <span>{isInWatchlist ? 'Remove' : 'Add List'}</span>
+          </button>
+          <button className="action-icon" onClick={handleTrailer}>
+            <Youtube size={18} /><span>Trailer</span>
+          </button>
+          <button className="action-icon" onClick={handleShare}>
+            <Share size={18} /><span>Share</span>
+          </button>
           <button className="action-icon"><Heart size={18} /><span>Favorite</span></button>
         </div>
 
@@ -121,17 +169,11 @@ export default function MoviePage() {
           <div className="download-section">
             <h2>Watch Options</h2>
             <div className="download-links">
-              {movie.streaming_links.map((link, i) => (
-                <button
-                  key={i}
-                  className="download-link"
-                  onClick={() => onWatch([link])}
-                >
-                  <Play size={18} />
-                  <span>{link.provider}</span>
-                  <span style={{ marginLeft: 'auto' }}>{link.quality}</span>
-                </button>
-              ))}
+              <button className="download-link" onClick={handleWatch}>
+                <Play size={18} />
+                <span>SPlayer</span>
+                <span style={{ marginLeft: 'auto' }}>HD</span>
+              </button>
             </div>
           </div>
         )}

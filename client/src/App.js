@@ -30,6 +30,7 @@ function Shell() {
           <Route path="/movies" element={<SearchResults type="movie" />} />
           <Route path="/tv-shows" element={<SearchResults type="tv" />} />
           <Route path="/watchlist" element={<SearchResults type="watchlist" />} />
+          <Route path="/search" element={<SearchResults />} />
 
           {/* Details */}
           <Route path="/movie/:id" element={<MoviePage />} />
