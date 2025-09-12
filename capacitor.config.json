@@ -1,6 +1,9 @@
 {
   "appId": "com.mtv.streaming",
   "appName": "MTV",
-  "webDir": "client/build",
-  "bundledWebRuntime": false
+  "webDir": "android/app/src/main/assets/www",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
 }

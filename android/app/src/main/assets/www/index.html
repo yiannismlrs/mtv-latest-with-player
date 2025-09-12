@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#FF6B35" />
+    <meta name="description" content="MTV Movies & TV - Stream and download your favorite movies and TV shows" />
+    <title>MTV Movies & TV</title>
+    <style>
+      /* MTV Streaming Platform - OnStream Style CSS */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      :root {
+        --primary-orange: #FF6B35;
+        --secondary-orange: #FF8C42;
+        --light-orange: #FFB885;
+        --dark-bg: #0D1117;
+        --darker-bg: #000000;
+        --card-bg: #161B22;
+        --text-primary: #FFFFFF;
+        --text-secondary: #B0B0B0;
+        --text-muted: #7D8590;
+        --border-color: #30363D;
+        --hover-bg: #21262D;
+      }
+
+      body {
+        background-color: var(--dark-bg);
+        color: var(--text-primary);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        margin: 0;
+        padding: 0;
+      }
+
+      .app {
+        min-height: 100vh;
+        background: linear-gradient(180deg, var(--dark-bg) 0%, var(--darker-bg) 100%);
+      }
+
+      /* Header */
+      .header {
+        background-color: rgba(13, 17, 23, 0.95);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--border-color);
+        padding: 1rem 2rem;
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+      }
+
+      .header-content {
+        max-width: 1200px;
+        margin: 0 auto;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .logo {
+        display: flex;
+        align-items: center;
+        font-size: 2rem;
+        font-weight: bold;
+        color: var(--primary-orange);
+        text-decoration: none;
+      }
+
+      .logo-icon {
+        width: 40px;
+        height: 40px;
+        margin-right: 0.5rem;
+        background: linear-gradient(45deg, var(--primary-orange), var(--secondary-orange));
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        color: white;
+      }
+
+      .search-bar {
+        display: flex;
+        align-items: center;
+        background-color: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 25px;
+        padding: 0.5rem 1rem;
+        min-width: 300px;
+      }
+
+      .search-bar input {
+        background: none;
+        border: none;
+        color: var(--text-primary);
+        flex: 1;
+        padding: 0.25rem;
+        outline: none;
+      }
+
+      .search-bar input::placeholder {
+        color: var(--text-muted);
+      }
+
+      .search-btn {
+        background: none;
+        border: none;
+        color: var(--text-secondary);
+        cursor: pointer;
+        padding: 0.25rem;
+      }
+
+      /* Main Content */
+      .main-content {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem;
+        padding-bottom: 6rem;
+      }
+
+      /* Hero Section */
+      .hero {
+        position: relative;
+        height: 60vh;
+        border-radius: 15px;
+        overflow: hidden;
+        margin-bottom: 3rem;
+        background: linear-gradient(135deg, var(--primary-orange) 0%, var(--secondary-orange) 100%);
+      }
+
+      .hero-content {
+        position: relative;
+        z-index: 2;
+        padding: 3rem;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+
+      .hero h1 {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+      }
+
+      .hero p {
+        font-size: 1.2rem;
+        margin-bottom: 2rem;
+        max-width: 600px;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
+      }
+
+      .cta-buttons {
+        display: flex;
+        gap: 1rem;
+      }
+
+      .btn-primary {
+        background: linear-gradient(45deg, var(--primary-orange), var(--secondary-orange));
+        color: white;
+        border: none;
+        padding: 0.75rem 2rem;
+        border-radius: 25px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+      }
+
+      .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(255, 107, 53, 0.3);
+      }
+
+      /* Content Sections */
+      .content-section {
+        margin-bottom: 3rem;
+      }
+
+      .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+      }
+
+      .section-title {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: var(--text-primary);
+      }
+
+      /* Content Grid */
+      .content-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 1.5rem;
+      }
+
+      .content-card {
+        background-color: var(--card-bg);
+        border-radius: 12px;
+        overflow: hidden;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        cursor: pointer;
+        border: 1px solid var(--border-color);
+      }
+
+      .content-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 30px rgba(255, 107, 53, 0.2);
+        border-color: var(--primary-orange);
+      }
+
+      .card-poster {
+        width: 100%;
+        height: 280px;
+        background-color: var(--hover-bg);
+        background-size: cover;
+        background-position: center;
+        position: relative;
+      }
+
+      .card-content {
+        padding: 1rem;
+      }
+
+      .card-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: var(--text-primary);
+        line-height: 1.3;
+      }
+
+      .card-meta {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      /* Bottom Navigation */
+      .bottom-navigation {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background-color: rgba(13, 17, 23, 0.95);
+        backdrop-filter: blur(10px);
+        border-top: 1px solid var(--border-color);
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        padding: 0.75rem 0;
+        z-index: 1000;
+      }
+
+      .nav-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-decoration: none;
+        color: var(--text-muted);
+        transition: color 0.3s ease;
+        padding: 0.5rem;
+        min-width: 60px;
+        cursor: pointer;
+      }
+
+      .nav-item.active {
+        color: var(--primary-orange);
+      }
+
+      .nav-item:hover {
+        color: var(--primary-orange);
+      }
+
+      .nav-label {
+        font-size: 0.7rem;
+        margin-top: 0.25rem;
+        font-weight: 500;
+      }
+
+      .loading {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 200px;
+      }
+
+      .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid var(--border-color);
+        border-top: 4px solid var(--primary-orange);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+
+      /* Responsive Design */
+      @media (max-width: 768px) {
+        .header-content {
+          flex-direction: column;
+          gap: 1rem;
+        }
+        
+        .search-bar {
+          min-width: 100%;
+        }
+        
+        .main-content {
+          padding: 1rem;
+          padding-bottom: 6rem;
+        }
+        
+        .hero {
+          height: 40vh;
+        }
+        
+        .hero-content {
+          padding: 2rem;
+        }
+        
+        .hero h1 {
+          font-size: 2rem;
+        }
+        
+        .content-grid {
+          grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+          gap: 1rem;
+        }
+        
+        .cta-buttons {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app" id="app">
+      <!-- Header -->
+      <header class="header">
+        <div class="header-content">
+          <div class="logo">
+            <span class="logo-icon">MTV</span>
+          </div>
+          <div class="search-bar">
+            <input type="text" placeholder="Search movies, TV shows..." id="searchInput">
+            <button class="search-btn" id="searchBtn">🔍</button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Content -->
+      <main class="main-content" id="mainContent">
+        <!-- Hero Section -->
+        <section class="hero">
+          <div class="hero-content">
+            <h1>Welcome to MTV</h1>
+            <p>Stream and discover your favorite movies and TV shows with the best viewing experience.</p>
+            <div class="cta-buttons">
+              <button class="btn-primary" onclick="exploreContent()">Explore Now</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Loading -->
+        <div class="loading" id="loading">
+          <div class="spinner"></div>
+        </div>
+
+        <!-- Content Sections -->
+        <div id="contentSections"></div>
+      </main>
+
+      <!-- Bottom Navigation -->
+      <nav class="bottom-navigation">
+        <div class="nav-item active" onclick="showHome()">
+          <span>🏠</span>
+          <span class="nav-label">Home</span>
+        </div>
+        <div class="nav-item" onclick="showMovies()">
+          <span>🎬</span>
+          <span class="nav-label">Movies</span>
+        </div>
+        <div class="nav-item" onclick="showTVShows()">
+          <span>📺</span>
+          <span class="nav-label">TV Series</span>
+        </div>
+        <div class="nav-item" onclick="showWatchlist()">
+          <span>📋</span>
+          <span class="nav-label">Watch List</span>
+        </div>
+      </nav>
+    </div>
+
+    <script src="js/app.js"></script>
+  </body>
+</html>
