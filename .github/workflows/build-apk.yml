@@ -1,0 +1,74 @@
+name: Build MTV APK
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        
+    - name: Install dependencies
+      run: |
+        npm install
+        npm install --prefix client
+        
+    - name: Build React app
+      run: npm run build --prefix client
+      
+    - name: Sync Capacitor
+      run: npx cap sync
+      
+    - name: Make gradlew executable
+      run: chmod +x android/gradlew
+      
+    - name: Build APK
+      run: |
+        cd android
+        ./gradlew assembleDebug
+        
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: MTV-APK
+        path: android/app/build/outputs/apk/debug/app-debug.apk
+        
+    - name: Create Release
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v1.0.${{ github.run_number }}
+        name: MTV APK v1.0.${{ github.run_number }}
+        body: |
+          🎬 MTV Streaming Platform APK
+          
+          ## Features:
+          - Stream movies and TV shows
+          - Search functionality  
+          - Download options
+          - Offline capability
+          - MTV branding
+          
+          ## Installation:
+          1. Download app-debug.apk
+          2. Enable "Install unknown apps" on Android
+          3. Install and enjoy!
+        files: |
+          android/app/build/outputs/apk/debug/app-debug.apk
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

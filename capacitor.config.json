@@ -1,0 +1,6 @@
+{
+  "appId": "com.mtv.streaming",
+  "appName": "MTV",
+  "webDir": "client/build",
+  "bundledWebRuntime": false
+}
