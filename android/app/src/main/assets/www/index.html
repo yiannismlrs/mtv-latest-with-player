@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#FF6B35" />
+    <meta name="description" content="MTV Movies & TV - Stream and download your favorite movies and TV shows" />
+    <title>MTV Movies & TV</title>
+    <link rel="stylesheet" href="css/styles.css">
+  </head>
+  <body>
+    <div class="app" id="app">
+      <!-- Header -->
+      <header class="header">
+        <div class="header-content">
+          <div class="logo">
+            <span class="logo-icon">MTV</span>
+          </div>
+          <button class="search-icon-btn" id="searchBtn" onclick="app.showSearchPage()">🔍</button>
+        </div>
+      </header>
+
+      <!-- Main Content -->
+      <main class="main-content" id="mainContent">
+
+        <!-- Loading -->
+        <div class="loading" id="loading">
+          <div class="spinner"></div>
+        </div>
+
+        <!-- Content Sections -->
+        <div id="contentSections"></div>
+      </main>
+
+      <!-- Bottom Navigation -->
+      <nav class="bottom-navigation">
+        <div class="nav-item active" onclick="showHome()">
+          <span>🏠</span>
+          <span class="nav-label">Home</span>
+        </div>
+        <div class="nav-item" onclick="showMovies()">
+          <span>🎬</span>
+          <span class="nav-label">Movies</span>
+        </div>
+        <div class="nav-item" onclick="showTVShows()">
+          <span>📺</span>
+          <span class="nav-label">TV Series</span>
+        </div>
+        <div class="nav-item" onclick="showWatchlist()">
+          <span>📋</span>
+          <span class="nav-label">Watch List</span>
+        </div>
+      </nav>
+    </div>
+
+    <script src="js/config.js"></script>
+    <script src="js/storage.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/app.js"></script>
+  </body>
+</html>

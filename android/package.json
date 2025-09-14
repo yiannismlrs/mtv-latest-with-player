@@ -1,0 +1,35 @@
+{
+  "name": "mtv-streaming-android",
+  "version": "1.0.0",
+  "description": "MTV Streaming Platform - Self-contained Android App",
+  "main": "index.js",
+  "scripts": {
+    "build": "echo 'Building Android APK...' && ./gradlew assembleDebug",
+    "build:release": "echo 'Building Release APK...' && ./gradlew assembleRelease",
+    "clean": "./gradlew clean",
+    "install:debug": "adb install app/build/outputs/apk/debug/app-debug.apk",
+    "install:release": "adb install app/build/outputs/apk/release/app-release.apk",
+    "dev": "echo 'For development, open in Android Studio or use gradlew commands'",
+    "sync": "npx cap sync"
+  },
+  "keywords": [
+    "android",
+    "streaming",
+    "mtv",
+    "movies",
+    "tv-shows",
+    "capacitor"
+  ],
+  "author": "MTV Streaming Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@capacitor/android": "^5.0.0",
+    "@capacitor/cli": "^5.0.0",
+    "@capacitor/core": "^5.0.0"
+  },
+  "capacitor": {
+    "android": {
+      "path": "."
+    }
+  }
+}

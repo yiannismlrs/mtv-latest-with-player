@@ -1,0 +1,14 @@
+@@ .. @@
+ {
+   "appId": "com.mtv.streaming",
+   "appName": "MTV",
+-  "webDir": "android/app/src/main/assets/www",
++  "webDir": "app/src/main/assets/www",
+   "bundledWebRuntime": false,
+   "server": {
+     "androidScheme": "https"
++  },
++  "android": {
++    "path": "."
+   }
+ }
