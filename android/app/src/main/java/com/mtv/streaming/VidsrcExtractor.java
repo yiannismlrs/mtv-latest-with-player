@@ -366,14 +366,14 @@ public class VidsrcExtractor {
         Log.d(TAG, "--- Trying Alternative Server Patterns ---");
         
         try {
-            // Pattern 1: Look for any element with data-hash attribute
-            Pattern pattern1 = Pattern.compile("data-hash=[\"'](.*?)[\"']", Pattern.CASE_INSENSITIVE);
+            // Pattern 1: Look for any element with data-hash attribute (more flexible)
+            Pattern pattern1 = Pattern.compile("data-hash=[\"']([^\"']{10,})[\"']", Pattern.CASE_INSENSITIVE);
             Matcher matcher1 = pattern1.matcher(html);
             
             int count = 0;
-            while (matcher1.find() && count < 10) { // Limit to prevent spam
+            while (matcher1.find() && count < 5) { // Limit to prevent spam
                 String dataHash = matcher1.group(1);
-                if (dataHash != null && !dataHash.isEmpty()) {
+                if (dataHash != null && !dataHash.isEmpty() && dataHash.length() > 10) {
                     ServerInfo server = new ServerInfo();
                     server.dataHash = dataHash;
                     server.name = "Server " + (count + 1); // Generic name
@@ -383,41 +383,79 @@ public class VidsrcExtractor {
                 }
             }
             
-            // Pattern 2: Look for server-like class names
-            Pattern pattern2 = Pattern.compile("class=[\"'][^\"']*server[^\"']*[\"'][^>]*data-hash=[\"'](.*?)[\"']", Pattern.CASE_INSENSITIVE);
+            // Pattern 2: Look for onclick or data attributes that might contain hashes
+            Pattern pattern2 = Pattern.compile("(?:onclick|data-[a-z]+)=[\"'][^\"']*([a-zA-Z0-9]{20,})[^\"']*[\"']", Pattern.CASE_INSENSITIVE);
             Matcher matcher2 = pattern2.matcher(html);
             
-            while (matcher2.find()) {
+            int count2 = 0;
+            while (matcher2.find() && count2 < 3) {
                 String dataHash = matcher2.group(1);
-                if (dataHash != null && !dataHash.isEmpty()) {
+                if (dataHash != null && !dataHash.isEmpty() && dataHash.length() > 15) {
                     // Check if we already have this hash
                     boolean exists = servers.stream().anyMatch(s -> s.dataHash.equals(dataHash));
                     if (!exists) {
                         ServerInfo server = new ServerInfo();
                         server.dataHash = dataHash;
-                        server.name = "Server (class pattern)";
+                        server.name = "Server (onclick pattern)";
                         servers.add(server);
                         Log.d(TAG, "Alt Pattern 2 - Found hash: " + dataHash);
+                        count2++;
                     }
                 }
             }
             
-            // Pattern 3: Look for button elements with data-hash
-            Pattern pattern3 = Pattern.compile("<button[^>]*data-hash=[\"'](.*?)[\"'][^>]*>(.*?)</button>", Pattern.CASE_INSENSITIVE);
+            // Pattern 3: Look for any long alphanumeric strings that could be hashes
+            Pattern pattern3 = Pattern.compile("([a-zA-Z0-9]{25,})", Pattern.CASE_INSENSITIVE);
             Matcher matcher3 = pattern3.matcher(html);
             
-            while (matcher3.find()) {
+            int count3 = 0;
+            while (matcher3.find() && count3 < 2) {
                 String dataHash = matcher3.group(1);
-                String buttonText = matcher3.group(2).replaceAll("<[^>]*>", "").trim();
                 
-                if (dataHash != null && !dataHash.isEmpty()) {
-                    boolean exists = servers.stream().anyMatch(s -> s.dataHash.equals(dataHash));
+                if (dataHash != null && dataHash.length() > 20 && dataHash.length() < 100) {
+                    // Skip common non-hash strings
+                    if (!dataHash.toLowerCase().contains("mozilla") && 
+                        !dataHash.toLowerCase().contains("webkit") && 
+                        !dataHash.toLowerCase().contains("chrome") &&
+                        !dataHash.toLowerCase().contains("script")) {
+                        
+                        // Check if we already have this hash
+                        boolean exists = servers.stream().anyMatch(s -> s.dataHash.equals(dataHash));
+                        if (!exists) {
+                            ServerInfo server = new ServerInfo();
+                            server.dataHash = dataHash;
+                            server.name = "Server (hash pattern)";
+                            servers.add(server);
+                            Log.d(TAG, "Alt Pattern 3 - Found potential hash: " + dataHash);
+                            count3++;
+                        }
+                    }
+                }
+            }
+            
+            // Pattern 4: Look for script tags that might contain server data
+            Pattern pattern4 = Pattern.compile("<script[^>]*>([^<]*(?:server|hash|source)[^<]*)</script>", Pattern.CASE_INSENSITIVE);
+            Matcher matcher4 = pattern4.matcher(html);
+            
+            while (matcher4.find()) {
+                String scriptContent = matcher4.group(1);
+                Log.d(TAG, "Found script with server/hash content: " + scriptContent.substring(0, Math.min(200, scriptContent.length())));
+                
+                // Look for hash-like strings in script content
+                Pattern hashInScript = Pattern.compile("([a-zA-Z0-9]{20,40})", Pattern.CASE_INSENSITIVE);
+                Matcher hashMatcher = hashInScript.matcher(scriptContent);
+                
+                int scriptHashCount = 0;
+                while (hashMatcher.find() && scriptHashCount < 2) {
+                    String possibleHash = hashMatcher.group(1);
+                    boolean exists = servers.stream().anyMatch(s -> s.dataHash.equals(possibleHash));
                     if (!exists) {
                         ServerInfo server = new ServerInfo();
-                        server.dataHash = dataHash;
-                        server.name = buttonText.isEmpty() ? "Button Server" : buttonText;
+                        server.dataHash = possibleHash;
+                        server.name = "Server (script)";
                         servers.add(server);
-                        Log.d(TAG, "Alt Pattern 3 - Found button: " + buttonText + " (hash: " + dataHash + ")");
+                        Log.d(TAG, "Alt Pattern 4 - Found script hash: " + possibleHash);
+                        scriptHashCount++;
                     }
                 }
             }
@@ -426,6 +464,7 @@ public class VidsrcExtractor {
             Log.e(TAG, "Error in alternative server extraction: " + e.getMessage());
         }
         
+        Log.d(TAG, "Alternative extraction found " + servers.size() + " total servers");
         return servers;
     }
     
