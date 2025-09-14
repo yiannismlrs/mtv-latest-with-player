@@ -107,13 +107,16 @@ public class CloudStreamVidsrcNetProvider implements Provider {
     public CompletableFuture<Boolean> testProvider() {
         Log.d(TAG, "Testing VidsrcNet provider...");
         
-        // Test with a known working movie
-        MediaInfo testMedia = new MediaInfo("550", "movie", "Fight Club", "1999");
+        // Test with a known working movie (The Matrix)
+        MediaInfo testMedia = new MediaInfo("603", "movie", "The Matrix", "1999");
         
         return resolveStreams(testMedia)
             .thenApply(result -> {
                 boolean working = result.success && result.getBestSource() != null;
-                Log.d(TAG, "VidsrcNet test result: " + working);
+                Log.d(TAG, "VidsrcNet test result: " + working + " (took " + result.resolveTimeMs + "ms)");
+                if (working) {
+                    Log.d(TAG, "Test stream URL: " + result.getBestSource().url);
+                }
                 return working;
             })
             .exceptionally(throwable -> {

@@ -93,9 +93,9 @@ public class VidsrcNetExtractor extends StreamExtractor {
     
     private String buildEmbedUrl(MediaInfo mediaInfo) {
         if (mediaInfo.isMovie()) {
-            return BASE_URL + "/movie?tmdb=" + mediaInfo.id;
+            return "https://vidsrc.net/embed/movie?tmdb=" + mediaInfo.id;
         } else {
-            return BASE_URL + "/tv?tmdb=" + mediaInfo.id + "&season=" + 
+            return "https://vidsrc.net/embed/tv?tmdb=" + mediaInfo.id + "&season=" + 
                    (mediaInfo.season != null ? mediaInfo.season : "1") + 
                    "&episode=" + (mediaInfo.episode != null ? mediaInfo.episode : "1");
         }
@@ -176,42 +176,96 @@ public class VidsrcNetExtractor extends StreamExtractor {
     private ServerInfo extractServers(String content) {
         ServerInfo serverInfo = new ServerInfo();
         
-        // Extract title
-        Pattern titlePattern = Pattern.compile("<title>(.*?)</title>");
-        Matcher titleMatcher = titlePattern.matcher(content);
-        if (titleMatcher.find()) {
-            serverInfo.title = titleMatcher.group(1);
+        Log.d(TAG, "Extracting servers from content length: " + content.length());
+        
+        // Look for the iframe source which contains the actual player
+        Pattern iframePattern = Pattern.compile("iframe[^>]*src=[\"'](https?://[^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+        Matcher iframeMatcher = iframePattern.matcher(content);
+        
+        String iframeSrc = null;
+        while (iframeMatcher.find()) {
+            String src = iframeMatcher.group(1);
+            Log.d(TAG, "Found iframe src: " + src);
+            if (src.contains("vidsrc") || src.contains("embed")) {
+                iframeSrc = src;
+                break;
+            }
         }
         
-        // Extract base domain from iframe src
-        Pattern iframePattern = Pattern.compile("iframe.*?src=[\"'](.*?)[\"']");
-        Matcher iframeMatcher = iframePattern.matcher(content);
-        if (iframeMatcher.find()) {
-            String iframeSrc = iframeMatcher.group(1);
-            if (iframeSrc.startsWith("//")) {
-                iframeSrc = "https:" + iframeSrc;
-            }
+        if (iframeSrc != null) {
             try {
+                // Fetch the iframe content which should contain the servers
+                String iframeContent = fetchUrl(iframeSrc);
+                Log.d(TAG, "Iframe content length: " + iframeContent.length());
+                
+                // Update base domain from iframe URL
                 URL url = new URL(iframeSrc);
                 baseDom = url.getProtocol() + "://" + url.getHost();
-                Log.d(TAG, "Updated base domain: " + baseDom);
+                Log.d(TAG, "Updated base domain from iframe: " + baseDom);
+                
+                // Extract servers from iframe content
+                extractServersFromContent(iframeContent, serverInfo);
+                
             } catch (Exception e) {
-                Log.w(TAG, "Failed to parse iframe src: " + e.getMessage());
+                Log.e(TAG, "Failed to fetch iframe content: " + e.getMessage());
+                // Fallback: try to extract from original content
+                extractServersFromContent(content, serverInfo);
             }
-        }
-        
-        // Extract servers with data-hash
-        Pattern serverPattern = Pattern.compile("class=[\"']server[\"'][^>]*data-hash=[\"'](.*?)[\"'][^>]*>(.*?)</");
-        Matcher serverMatcher = serverPattern.matcher(content);
-        while (serverMatcher.find()) {
-            Server server = new Server();
-            server.dataHash = serverMatcher.group(1);
-            server.name = serverMatcher.group(2).trim();
-            serverInfo.servers.add(server);
-            Log.d(TAG, "Found server: " + server.name + " (" + server.dataHash + ")");
+        } else {
+            Log.w(TAG, "No iframe found, trying to extract from main content");
+            extractServersFromContent(content, serverInfo);
         }
         
         return serverInfo;
+    }
+    
+    private void extractServersFromContent(String content, ServerInfo serverInfo) {
+        // Multiple patterns to find servers
+        
+        // Pattern 1: Standard server buttons with data-hash
+        Pattern serverPattern1 = Pattern.compile("class=[\"'][^\"']*server[^\"']*[\"'][^>]*data-hash=[\"'](.*?)[\"'][^>]*>(.*?)<", Pattern.CASE_INSENSITIVE);
+        Matcher serverMatcher1 = serverPattern1.matcher(content);
+        while (serverMatcher1.find()) {
+            Server server = new Server();
+            server.dataHash = serverMatcher1.group(1);
+            server.name = serverMatcher1.group(2).trim().replaceAll("<[^>]*>", "");
+            if (!server.name.isEmpty() && !server.dataHash.isEmpty()) {
+                serverInfo.servers.add(server);
+                Log.d(TAG, "Found server (pattern 1): " + server.name + " (" + server.dataHash + ")");
+            }
+        }
+        
+        // Pattern 2: Alternative server structure
+        Pattern serverPattern2 = Pattern.compile("data-hash=[\"'](.*?)[\"'][^>]*class=[\"'][^\"']*server[^\"']*[\"'][^>]*>(.*?)<", Pattern.CASE_INSENSITIVE);
+        Matcher serverMatcher2 = serverPattern2.matcher(content);
+        while (serverMatcher2.find()) {
+            Server server = new Server();
+            server.dataHash = serverMatcher2.group(1);
+            server.name = serverMatcher2.group(2).trim().replaceAll("<[^>]*>", "");
+            if (!server.name.isEmpty() && !server.dataHash.isEmpty()) {
+                serverInfo.servers.add(server);
+                Log.d(TAG, "Found server (pattern 2): " + server.name + " (" + server.dataHash + ")");
+            }
+        }
+        
+        // Pattern 3: Look for any data-hash attributes
+        if (serverInfo.servers.isEmpty()) {
+            Pattern hashPattern = Pattern.compile("data-hash=[\"'](.*?)[\"']", Pattern.CASE_INSENSITIVE);
+            Matcher hashMatcher = hashPattern.matcher(content);
+            int serverCount = 0;
+            while (hashMatcher.find() && serverCount < 5) {
+                Server server = new Server();
+                server.dataHash = hashMatcher.group(1);
+                server.name = "Server " + (serverCount + 1);
+                if (!server.dataHash.isEmpty()) {
+                    serverInfo.servers.add(server);
+                    Log.d(TAG, "Found server (pattern 3): " + server.name + " (" + server.dataHash + ")");
+                    serverCount++;
+                }
+            }
+        }
+        
+        Log.d(TAG, "Total servers extracted: " + serverInfo.servers.size());
     }
     
     private String extractStreamFromRCP(String rcpContent) {
