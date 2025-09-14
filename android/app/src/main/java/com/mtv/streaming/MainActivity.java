@@ -136,6 +136,7 @@ public class MainActivity extends Activity {
                 // Use ProviderManager to resolve streams
                 com.mtv.streaming.providers.ProviderManager.getInstance()
                     .resolveStreams(mediaInfo)
+                    .orTimeout(30, java.util.concurrent.TimeUnit.SECONDS) // Add 30 second timeout
                     .thenAccept(result -> {
                         android.util.Log.d("MTV_DEBUG", "Provider resolution completed");
                         android.util.Log.d("MTV_DEBUG", "Success: " + result.success);
@@ -177,14 +178,28 @@ public class MainActivity extends Activity {
                                 showToast("Failed to resolve stream: " + errorMsg);
                             }
                         });
-                    })
+                            
+                            // Show more user-friendly error messages
+                            if (errorMsg.contains("timeout") || errorMsg.contains("Timeout")) {
+                                showToast("Stream resolution timed out. Please try again.");
+                            } else if (errorMsg.contains("HTTP") || errorMsg.contains("network")) {
+                                showToast("Network error. Check your internet connection.");
+                            } else if (errorMsg.contains("No streams found")) {
+                                showToast("No streams available for this content. Try another title.");
+                            } else {
+                                showToast("Failed to resolve stream. Please try again later.");
+                            }
                     .exceptionally(throwable -> {
                         android.util.Log.e("MTV_DEBUG", "Provider system exception: " + throwable.getClass().getSimpleName());
                         android.util.Log.e("MTV_DEBUG", "Exception message: " + throwable.getMessage());
                         throwable.printStackTrace();
                         
                         runOnUiThread(() -> {
-                            showToast("Stream resolution error: " + throwable.getMessage());
+                            if (throwable instanceof java.util.concurrent.TimeoutException) {
+                                showToast("Stream resolution timed out. Please try again.");
+                            } else {
+                                showToast("Stream resolution error. Please try again.");
+                            }
                         });
                         return null;
                     });

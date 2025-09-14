@@ -37,9 +37,10 @@ public class ProviderManager {
         Log.d(TAG, "Initializing CloudStream-style extractors...");
         
         try {
-            // Add CloudStream-style extractors
+            // Add working CloudStream-style extractors
             providers.add(new CloudStreamVidsrcNetProvider());
-            providers.add(new CloudStreamSuperProvider());
+            providers.add(new VidsrcProvider()); // Add working Vidsrc.to provider
+            providers.add(new SuperStreamProvider()); // Add working SuperStream provider
             
         } catch (Exception e) {
             Log.e(TAG, "Error initializing extractors: " + e.getMessage());
@@ -48,10 +49,10 @@ public class ProviderManager {
         // Sort by priority
         providers.sort(Comparator.comparingInt(Provider::getPriority));
         
-        Log.d(TAG, "Initialized " + providers.size() + " CloudStream extractors");
+        Log.d(TAG, "Initialized " + providers.size() + " stream providers");
         for (Provider provider : providers) {
             Provider.ProviderInfo info = provider.getProviderInfo();
-            Log.d(TAG, "Extractor: " + info.name + " v" + info.version + " (enabled: " + info.enabled + ")");
+            Log.d(TAG, "Provider: " + info.name + " v" + info.version + " (enabled: " + info.enabled + ", priority: " + provider.getPriority() + ")");
         }
     }
     
