@@ -175,20 +175,20 @@ public class MainActivity extends Activity {
                                 String errorMsg = result.error != null ? result.error : "Unknown error";
                                 android.util.Log.e("MTV_DEBUG", "✗ Stream resolution failed: " + errorMsg);
                                 android.util.Log.e("MTV_DEBUG", "Providers attempted: " + result.providersAttempted);
-                                showToast("Failed to resolve stream: " + errorMsg);
+                                
+                                // Show more user-friendly error messages
+                                if (errorMsg.contains("timeout") || errorMsg.contains("Timeout")) {
+                                    showToast("Stream resolution timed out. Please try again.");
+                                } else if (errorMsg.contains("HTTP") || errorMsg.contains("network")) {
+                                    showToast("Network error. Check your internet connection.");
+                                } else if (errorMsg.contains("No streams found")) {
+                                    showToast("No streams available for this content. Try another title.");
+                                } else {
+                                    showToast("Failed to resolve stream. Please try again later.");
+                                }
                             }
                         });
-                            
-                            // Show more user-friendly error messages
-                            if (errorMsg.contains("timeout") || errorMsg.contains("Timeout")) {
-                                showToast("Stream resolution timed out. Please try again.");
-                            } else if (errorMsg.contains("HTTP") || errorMsg.contains("network")) {
-                                showToast("Network error. Check your internet connection.");
-                            } else if (errorMsg.contains("No streams found")) {
-                                showToast("No streams available for this content. Try another title.");
-                            } else {
-                                showToast("Failed to resolve stream. Please try again later.");
-                            }
+                    })
                     .exceptionally(throwable -> {
                         android.util.Log.e("MTV_DEBUG", "Provider system exception: " + throwable.getClass().getSimpleName());
                         android.util.Log.e("MTV_DEBUG", "Exception message: " + throwable.getMessage());
