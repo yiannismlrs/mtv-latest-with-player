@@ -117,105 +117,28 @@ public class MainActivity extends Activity {
             android.util.Log.d("MTV_DEBUG", "Year: " + year);
             
             // First check if SPlayer is installed
-            boolean splayerInstalled = SPlayerUtil.isSPlayerInstalled(MainActivity.this);
-            android.util.Log.d("MTV_DEBUG", "SPlayer installed check: " + splayerInstalled);
+            // For now, let's just open the embed URL directly to test if streams work
+            String embedUrl = buildEmbedUrl(mediaId, mediaType);
+            android.util.Log.d("MTV_DEBUG", "Opening embed URL: " + embedUrl);
             
-            if (splayerInstalled) {
-                // SPlayer is installed - resolve streams and launch directly
-                android.util.Log.d("MTV_DEBUG", "✓ SPlayer detected, starting stream resolution...");
-                
-                // Show loading message to user
-                runOnUiThread(() -> showToast("Resolving stream..."));
-                
-                // Create MediaInfo for provider system
-                com.mtv.streaming.providers.Provider.MediaInfo mediaInfo = 
-                    new com.mtv.streaming.providers.Provider.MediaInfo(mediaId, mediaType, title, year);
-                
-                android.util.Log.d("MTV_DEBUG", "Created MediaInfo, starting provider resolution...");
-                
-                // Use ProviderManager to resolve streams
-                com.mtv.streaming.providers.ProviderManager.getInstance()
-                    .resolveStreams(mediaInfo)
-                    .orTimeout(30, java.util.concurrent.TimeUnit.SECONDS) // Add 30 second timeout
-                    .thenAccept(result -> {
-                        android.util.Log.d("MTV_DEBUG", "Provider resolution completed");
-                        android.util.Log.d("MTV_DEBUG", "Success: " + result.success);
-                        android.util.Log.d("MTV_DEBUG", "Provider used: " + result.providerUsed);
-                        android.util.Log.d("MTV_DEBUG", "Total time: " + result.totalTimeMs + "ms");
-                        android.util.Log.d("MTV_DEBUG", "Providers attempted: " + result.providersAttempted);
-                        
-                        runOnUiThread(() -> {
-                            if (result.success && result.bestSource != null) {
-                                android.util.Log.d("MTV_DEBUG", "✓ Stream successfully resolved by " + result.providerUsed);
-                                android.util.Log.d("MTV_DEBUG", "Stream URL: " + result.bestSource.url);
-                                android.util.Log.d("MTV_DEBUG", "Quality: " + result.bestSource.quality);
-                                android.util.Log.d("MTV_DEBUG", "Type: " + result.bestSource.type);
-                                android.util.Log.d("MTV_DEBUG", "MIME Type: " + result.bestSource.getMimeType());
-                                android.util.Log.d("MTV_DEBUG", "Headers count: " + (result.bestSource.headers != null ? result.bestSource.headers.size() : 0));
-                                
-                                showToast("Stream resolved! Launching SPlayer...");
-                                
-                                // Launch SPlayer with resolved stream
-                                boolean launched = SPlayerUtil.launchSPlayerDirect(MainActivity.this, 
-                                    result.bestSource.url, 
-                                    result.bestSource.getMimeType(), 
-                                    result.bestSource.headers);
-                                
-                                if (!launched) {
-                                    android.util.Log.w("MTV_DEBUG", "Direct launch failed, trying proxy method...");
-                                    showToast("Trying alternative launch method...");
-                                    SPlayerUtil.open(MainActivity.this, 
-                                        result.bestSource.url, 
-                                        result.bestSource.getMimeType(), 
-                                        result.bestSource.headers);
-                                } else {
-                                    android.util.Log.d("MTV_DEBUG", "✓ SPlayer launched successfully!");
-                                }
-                            } else {
-                                String errorMsg = result.error != null ? result.error : "Unknown error";
-                                android.util.Log.e("MTV_DEBUG", "✗ Stream resolution failed: " + errorMsg);
-                                android.util.Log.e("MTV_DEBUG", "Providers attempted: " + result.providersAttempted);
-                                
-                                // Show more user-friendly error messages
-                                if (errorMsg.contains("timeout") || errorMsg.contains("Timeout")) {
-                                    showToast("Stream resolution timed out. Please try again.");
-                                } else if (errorMsg.contains("HTTP") || errorMsg.contains("network")) {
-                                    showToast("Network error. Check your internet connection.");
-                                } else if (errorMsg.contains("No streams found")) {
-                                    showToast("No streams available for this content. Try another title.");
-                                } else {
-                                    showToast("Failed to resolve stream. Please try again later.");
-                                }
-                            }
-                        });
-                    })
-                    .exceptionally(throwable -> {
-                        android.util.Log.e("MTV_DEBUG", "Provider system exception: " + throwable.getClass().getSimpleName());
-                        android.util.Log.e("MTV_DEBUG", "Exception message: " + throwable.getMessage());
-                        throwable.printStackTrace();
-                        
-                        runOnUiThread(() -> {
-                            if (throwable instanceof java.util.concurrent.TimeoutException) {
-                                showToast("Stream resolution timed out. Please try again.");
-                            } else {
-                                showToast("Stream resolution error. Please try again.");
-                            }
-                        });
-                        return null;
-                    });
-                    
+            try {
+                Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(embedUrl));
+                browserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(browserIntent);
+                android.util.Log.d("MTV_DEBUG", "✓ Opened embed URL in browser");
+                showToast("Opening stream in browser...");
+            } catch (Exception e) {
+                android.util.Log.e("MTV_DEBUG", "Failed to open embed URL: " + e.getMessage());
+                showToast("Failed to open stream");
+            }
+        }
+        
+        private String buildEmbedUrl(String mediaId, String mediaType) {
+            if ("movie".equals(mediaType)) {
+                return "https://vidsrc.net/embed/movie?tmdb=" + mediaId;
             } else {
-                // SPlayer is NOT installed - open website
-                android.util.Log.d("MTV_DEBUG", "✗ SPlayer not installed, opening website");
-                try {
-                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://splayer.dev/"));
-                    browserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                    startActivity(browserIntent);
-                    android.util.Log.d("MTV_DEBUG", "✓ Opened SPlayer website in browser");
-                } catch (Exception e) {
-                    android.util.Log.e("MTV_DEBUG", "Failed to open browser: " + e.getMessage());
-                    showToast("Please install SPlayer from Play Store");
-                }
+                // For TV shows, default to season 1, episode 1 for testing
+                return "https://vidsrc.net/embed/tv?tmdb=" + mediaId + "&season=1&episode=1";
             }
         }
         
