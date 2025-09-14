@@ -252,10 +252,10 @@ public class VidsrcExtractor {
         try {
             Log.d(TAG, "=== SERVER EXTRACTION DEBUG ===");
             
-            // Pattern to match server buttons with data-hash attributes
-            // Based on the documentation: <div class="server" data-hash="...">Server Name</div>
+            // Updated patterns based on actual VidSrc.to structure
+            // Pattern 1: Standard server elements with data-hash
             Pattern serverPattern = Pattern.compile(
-                "data-hash=[\"'](.*?)[\"'][^>]*(?:class=[\"'][^\"']*server[^\"']*[\"']|>)([^<]*(?:<[^>]*>[^<]*)*?)(?:</[^>]*>|$)", 
+                "<[^>]*data-hash=[\"']([^\"']+)[\"'][^>]*>([^<]*)</[^>]*>", 
                 Pattern.CASE_INSENSITIVE | Pattern.DOTALL
             );
             
@@ -288,20 +288,20 @@ public class VidsrcExtractor {
             
             Log.d(TAG, "Primary pattern found " + matchCount + " matches, " + servers.size() + " valid servers");
             
-            // Alternative pattern for different HTML structure
+            // Pattern 2: More flexible server detection
             if (servers.isEmpty()) {
-                Log.d(TAG, "Trying alternative pattern...");
-                Pattern altPattern = Pattern.compile(
-                    "<[^>]*data-hash=[\"'](.*?)[\"'][^>]*>([^<]+)</[^>]*>", 
+                Log.d(TAG, "Trying flexible server pattern...");
+                Pattern flexPattern = Pattern.compile(
+                    "data-hash=[\"']([^\"']+)[\"']", 
                     Pattern.CASE_INSENSITIVE
                 );
                 
-                Matcher altMatcher = altPattern.matcher(html);
+                Matcher flexMatcher = flexPattern.matcher(html);
                 int altMatchCount = 0;
-                while (altMatcher.find()) {
+                while (flexMatcher.find() && altMatchCount < 5) { // Limit to 5 servers
                     altMatchCount++;
-                    String dataHash = altMatcher.group(1);
-                    String serverName = altMatcher.group(2).trim();
+                    String dataHash = flexMatcher.group(1);
+                    String serverName = "Server " + altMatchCount;
                     
                     Log.d(TAG, "Alt Match " + altMatchCount + " - hash: '" + dataHash + "', name: '" + serverName + "'");
                     
@@ -311,10 +311,42 @@ public class VidsrcExtractor {
                         server.name = serverName;
                         servers.add(server);
                         
-                        Log.d(TAG, "Found server (alt pattern): " + serverName + " (hash: " + dataHash + ")");
+                        Log.d(TAG, "Found server (flex pattern): " + serverName + " (hash: " + dataHash + ")");
                     }
                 }
-                Log.d(TAG, "Alternative pattern found " + altMatchCount + " matches");
+                Log.d(TAG, "Flexible pattern found " + altMatchCount + " matches");
+            }
+            
+            // Pattern 3: Look for iframe sources as fallback
+            if (servers.isEmpty()) {
+                Log.d(TAG, "Trying iframe source extraction...");
+                Pattern iframePattern = Pattern.compile(
+                    "<iframe[^>]*src=[\"']([^\"']+)[\"'][^>]*>", 
+                    Pattern.CASE_INSENSITIVE
+                );
+                
+                Matcher iframeMatcher = iframePattern.matcher(html);
+                int iframeCount = 0;
+                while (iframeMatcher.find() && iframeCount < 3) {
+                    iframeCount++;
+                    String iframeSrc = iframeMatcher.group(1);
+                    
+                    // Extract hash-like parameter from iframe src
+                    if (iframeSrc.contains("=")) {
+                        String[] parts = iframeSrc.split("=");
+                        if (parts.length > 1) {
+                            String possibleHash = parts[parts.length - 1];
+                            if (possibleHash.length() > 10) { // Reasonable hash length
+                                ServerInfo server = new ServerInfo();
+                                server.dataHash = possibleHash;
+                                server.name = "Iframe Server " + iframeCount;
+                                servers.add(server);
+                                
+                                Log.d(TAG, "Found iframe server: " + server.name + " (hash: " + possibleHash + ")");
+                            }
+                        }
+                    }
+                }
             }
             
         } catch (Exception e) {
@@ -514,6 +546,10 @@ public class VidsrcExtractor {
      */
     private static String fetchRcpResponse(String rcpUrl, String referer) {
         try {
+            Log.d(TAG, "=== FETCHING RCP RESPONSE ===");
+            Log.d(TAG, "RCP URL: " + rcpUrl);
+            Log.d(TAG, "Referer: " + referer);
+            
             HttpURLConnection connection = (HttpURLConnection) new URL(rcpUrl).openConnection();
             
             // Set headers for RCP request
@@ -527,15 +563,39 @@ public class VidsrcExtractor {
             connection.setRequestProperty("Sec-Fetch-Mode", "cors");
             connection.setRequestProperty("Sec-Fetch-Site", "same-origin");
             connection.setRequestProperty("X-Requested-With", "XMLHttpRequest");
+            connection.setRequestProperty("Cache-Control", "no-cache");
+            connection.setRequestProperty("Pragma", "no-cache");
             
             connection.setConnectTimeout(10000);
             connection.setReadTimeout(15000);
+            connection.setInstanceFollowRedirects(true);
             
             int responseCode = connection.getResponseCode();
-            Log.d(TAG, "RCP response code: " + responseCode);
+            Log.d(TAG, "RCP HTTP response code: " + responseCode);
+            Log.d(TAG, "RCP response message: " + connection.getResponseMessage());
+            Log.d(TAG, "RCP content type: " + connection.getContentType());
             
-            if (responseCode != 200) {
-                Log.w(TAG, "RCP request failed: HTTP " + responseCode);
+            if (responseCode != 200 && responseCode != 302) {
+                Log.w(TAG, "RCP request failed: HTTP " + responseCode + " - " + connection.getResponseMessage());
+                
+                // Try to read error response
+                try {
+                    BufferedReader errorReader = new BufferedReader(new InputStreamReader(connection.getErrorStream()));
+                    StringBuilder errorResponse = new StringBuilder();
+                    String errorLine;
+                    while ((errorLine = errorReader.readLine()) != null) {
+                        errorResponse.append(errorLine).append("\n");
+                    }
+                    errorReader.close();
+                    
+                    if (errorResponse.length() > 0) {
+                        String errorPreview = errorResponse.length() > 500 ? errorResponse.substring(0, 500) + "..." : errorResponse.toString();
+                        Log.w(TAG, "RCP error response: " + errorPreview);
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "Could not read RCP error response: " + e.getMessage());
+                }
+                
                 return null;
             }
             
@@ -548,10 +608,13 @@ public class VidsrcExtractor {
             reader.close();
             connection.disconnect();
             
-            return response.toString();
+            String responseText = response.toString();
+            Log.d(TAG, "✓ RCP response received, length: " + responseText.length());
+            return responseText;
             
         } catch (Exception e) {
             Log.e(TAG, "Error fetching RCP response: " + e.getMessage());
+            e.printStackTrace();
             return null;
         }
     }
@@ -561,18 +624,31 @@ public class VidsrcExtractor {
      */
     private static String extractStreamFromRcp(String rcpResponse) {
         try {
+            Log.d(TAG, "=== RCP RESPONSE ANALYSIS ===");
+            Log.d(TAG, "Response length: " + rcpResponse.length());
+            Log.d(TAG, "Response preview: " + rcpResponse.substring(0, Math.min(500, rcpResponse.length())));
+            
             // Method 1: Try to parse as JSON
             try {
                 JSONObject json = new JSONObject(rcpResponse);
+                Log.d(TAG, "Successfully parsed as JSON");
                 
                 // Check common JSON keys for stream URLs
                 String[] keys = {"url", "file", "source", "stream", "src"};
                 for (String key : keys) {
                     if (json.has(key)) {
                         String url = json.getString(key);
-                        if (url != null && (url.contains(".m3u8") || url.contains(".mp4"))) {
+                        if (url != null && !url.isEmpty()) {
                             Log.d(TAG, "Found stream URL in JSON key '" + key + "': " + url);
-                            return url;
+                            
+                            // Validate URL format
+                            if (url.startsWith("http") && (url.contains(".m3u8") || url.contains(".mp4") || url.contains("stream"))) {
+                                return url;
+                            } else if (url.startsWith("http")) {
+                                // Even if it doesn't have obvious video extension, try it
+                                Log.d(TAG, "Found HTTP URL without video extension, trying anyway: " + url);
+                                return url;
+                            }
                         }
                     }
                 }
@@ -580,10 +656,11 @@ public class VidsrcExtractor {
                 // Check for nested objects
                 if (json.has("result") && json.get("result") instanceof JSONObject) {
                     JSONObject result = json.getJSONObject("result");
+                    Log.d(TAG, "Checking nested result object");
                     for (String key : keys) {
                         if (result.has(key)) {
                             String url = result.getString(key);
-                            if (url != null && (url.contains(".m3u8") || url.contains(".mp4"))) {
+                            if (url != null && !url.isEmpty() && url.startsWith("http")) {
                                 Log.d(TAG, "Found stream URL in result." + key + ": " + url);
                                 return url;
                             }
@@ -591,11 +668,56 @@ public class VidsrcExtractor {
                     }
                 }
                 
+                // Check for sources array
+                if (json.has("sources") && json.get("sources") instanceof JSONArray) {
+                    JSONArray sources = json.getJSONArray("sources");
+                    Log.d(TAG, "Found sources array with " + sources.length() + " items");
+                    for (int i = 0; i < sources.length(); i++) {
+                        JSONObject source = sources.getJSONObject(i);
+                        for (String key : keys) {
+                            if (source.has(key)) {
+                                String url = source.getString(key);
+                                if (url != null && !url.isEmpty() && url.startsWith("http")) {
+                                    Log.d(TAG, "Found stream URL in sources[" + i + "]." + key + ": " + url);
+                                    return url;
+                                }
+                            }
+                        }
+                    }
+                }
+                
             } catch (Exception e) {
-                Log.d(TAG, "RCP response is not JSON, trying other methods");
+                Log.d(TAG, "RCP response is not JSON: " + e.getMessage() + ", trying other methods");
             }
             
-            // Method 2: Look for encoded data that might need decoding
+            // Method 2: Direct URL pattern matching (most reliable)
+            Log.d(TAG, "Trying direct URL pattern matching...");
+            Pattern directPattern = Pattern.compile("(https?://[^\\s\"'<>]+(?:\\.m3u8|\\.mp4|/stream|/play)(?:\\?[^\\s\"'<>]*)?)", Pattern.CASE_INSENSITIVE);
+            Matcher directMatcher = directPattern.matcher(rcpResponse);
+            
+            if (directMatcher.find()) {
+                String url = directMatcher.group(1);
+                Log.d(TAG, "Found direct stream URL: " + url);
+                return url;
+            }
+            
+            // Method 3: Look for any HTTP URL as fallback
+            Log.d(TAG, "Trying any HTTP URL pattern...");
+            Pattern httpPattern = Pattern.compile("(https?://[^\\s\"'<>]+)", Pattern.CASE_INSENSITIVE);
+            Matcher httpMatcher = httpPattern.matcher(rcpResponse);
+            
+            while (httpMatcher.find()) {
+                String url = httpMatcher.group(1);
+                // Skip common non-video URLs
+                if (!url.contains("google") && !url.contains("facebook") && !url.contains("twitter") && 
+                    !url.contains("ads") && !url.contains("analytics") && url.length() > 20) {
+                    Log.d(TAG, "Found potential stream URL: " + url);
+                    return url;
+                }
+            }
+            
+            // Method 4: Look for encoded data that might need decoding
+            Log.d(TAG, "Trying base64 decoding...");
             Pattern encodedPattern = Pattern.compile("(?:data|source|url)\\s*[:=]\\s*[\"']([A-Za-z0-9+/=]+)[\"']");
             Matcher encodedMatcher = encodedPattern.matcher(rcpResponse);
             
@@ -605,8 +727,9 @@ public class VidsrcExtractor {
                     // Try base64 decoding
                     byte[] decoded = Base64.decode(encoded, Base64.DEFAULT);
                     String decodedStr = new String(decoded);
+                    Log.d(TAG, "Decoded string: " + decodedStr);
                     
-                    if (decodedStr.contains(".m3u8") || decodedStr.contains(".mp4")) {
+                    if (decodedStr.contains("http")) {
                         // Look for URLs in decoded content
                         Pattern urlPattern = Pattern.compile("(https?://[^\\s\"']+(?:\\.m3u8|\\.mp4)(?:\\?[^\\s\"']*)?)", Pattern.CASE_INSENSITIVE);
                         Matcher urlMatcher = urlPattern.matcher(decodedStr);
@@ -619,20 +742,12 @@ public class VidsrcExtractor {
                     }
                 } catch (Exception e) {
                     // Not base64 or invalid, continue
+                    Log.d(TAG, "Failed to decode: " + e.getMessage());
                 }
             }
             
-            // Method 3: Direct URL pattern matching
-            Pattern directPattern = Pattern.compile("(https?://[^\\s\"']+(?:\\.m3u8|\\.mp4)(?:\\?[^\\s\"']*)?)", Pattern.CASE_INSENSITIVE);
-            Matcher directMatcher = directPattern.matcher(rcpResponse);
-            
-            if (directMatcher.find()) {
-                String url = directMatcher.group(1);
-                Log.d(TAG, "Found direct stream URL: " + url);
-                return url;
-            }
-            
-            // Method 4: Look for src: pattern specifically
+            // Method 5: Look for src: pattern specifically
+            Log.d(TAG, "Trying src pattern matching...");
             Pattern srcPattern = Pattern.compile("src\\s*[:=]\\s*[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
             Matcher srcMatcher = srcPattern.matcher(rcpResponse);
             
@@ -641,7 +756,7 @@ public class VidsrcExtractor {
                 Log.d(TAG, "Found src data: " + srcData);
                 
                 // Check if it's a direct URL
-                if (srcData.startsWith("http") && (srcData.contains(".m3u8") || srcData.contains(".mp4"))) {
+                if (srcData.startsWith("http")) {
                     return srcData;
                 }
                 
@@ -650,7 +765,7 @@ public class VidsrcExtractor {
                     byte[] decoded = Base64.decode(srcData, Base64.DEFAULT);
                     String decodedStr = new String(decoded);
                     
-                    Pattern urlPattern = Pattern.compile("(https?://[^\\s\"']+(?:\\.m3u8|\\.mp4)(?:\\?[^\\s\"']*)?)", Pattern.CASE_INSENSITIVE);
+                    Pattern urlPattern = Pattern.compile("(https?://[^\\s\"'<>]+)", Pattern.CASE_INSENSITIVE);
                     Matcher urlMatcher = urlPattern.matcher(decodedStr);
                     
                     if (urlMatcher.find()) {
@@ -663,7 +778,7 @@ public class VidsrcExtractor {
                 }
             }
             
-            Log.w(TAG, "No stream URL found in RCP response");
+            Log.w(TAG, "✗ No stream URL found in RCP response after trying all methods");
             return null;
             
         } catch (Exception e) {
