@@ -116,16 +116,12 @@ public class MainActivity extends Activity {
             android.util.Log.d("MTV_DEBUG", "Title: " + title);
             android.util.Log.d("MTV_DEBUG", "Year: " + year);
             
-            // Build embed URL for stream extraction
-            String embedUrl = buildEmbedUrl(mediaId, mediaType);
-            android.util.Log.d("MTV_DEBUG", "Starting stream extraction from: " + embedUrl);
-            
             runOnUiThread(() -> showToast("Extracting stream..."));
             
-            // Use new StreamExtractor pipeline
-            StreamExtractor.resolveStream(embedUrl, new StreamExtractor.StreamCallback() {
+            // Use proper VidSrc.to extractor
+            VidsrcExtractor.resolveStream(mediaId, mediaType, title, year, new VidsrcExtractor.StreamCallback() {
                 @Override
-                public void onStreamResolved(StreamExtractor.StreamResult result) {
+                public void onStreamResolved(VidsrcExtractor.StreamResult result) {
                     runOnUiThread(() -> {
                         if (result.success) {
                             android.util.Log.d("MTV_DEBUG", "✓ Stream extraction successful");
@@ -152,15 +148,6 @@ public class MainActivity extends Activity {
                     });
                 }
             });
-        }
-        
-        private String buildEmbedUrl(String mediaId, String mediaType) {
-            if ("movie".equals(mediaType)) {
-                return "https://vidsrc.net/embed/movie?tmdb=" + mediaId;
-            } else {
-                // For TV shows, default to season 1, episode 1
-                return "https://vidsrc.net/embed/tv?tmdb=" + mediaId + "&season=1&episode=1";
-            }
         }
         
         private void showToast(String message) {
