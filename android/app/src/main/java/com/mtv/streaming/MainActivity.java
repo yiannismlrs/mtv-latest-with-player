@@ -112,58 +112,72 @@ public class MainActivity extends Activity {
         public void openInSPlayer(String mediaId, String mediaType, String title, String year) {
             android.util.Log.d("MTV_DEBUG", "openInSPlayer called - ID: " + mediaId + ", Type: " + mediaType + ", Title: " + title);
             
-            // Create MediaInfo for provider system
-            com.mtv.streaming.providers.Provider.MediaInfo mediaInfo = 
-                new com.mtv.streaming.providers.Provider.MediaInfo(mediaId, mediaType, title, year);
+            // First check if SPlayer is installed
+            boolean splayerInstalled = SPlayerUtil.isSPlayerInstalled(MainActivity.this);
+            android.util.Log.d("MTV_DEBUG", "SPlayer installed: " + splayerInstalled);
             
-            // Use ProviderManager to resolve streams
-            com.mtv.streaming.providers.ProviderManager.getInstance()
-                .resolveStreams(mediaInfo)
-                .thenAccept(result -> {
-                    runOnUiThread(() -> {
-                        if (result.success && result.bestSource != null) {
-                            android.util.Log.d("MTV_DEBUG", "✓ Stream resolved by " + result.providerUsed);
-                            android.util.Log.d("MTV_DEBUG", "Stream URL: " + result.bestSource.url);
-                            android.util.Log.d("MTV_DEBUG", "Quality: " + result.bestSource.quality);
-                            android.util.Log.d("MTV_DEBUG", "Type: " + result.bestSource.type);
-                            android.util.Log.d("MTV_DEBUG", "Providers attempted: " + result.providersAttempted);
-                            
-                            // Launch SPlayer with resolved stream
-                            SPlayerUtil.open(MainActivity.this, 
-                                result.bestSource.url, 
-                                result.bestSource.getMimeType(), 
-                                result.bestSource.headers);
-                        } else {
-                            android.util.Log.e("MTV_DEBUG", "✗ All providers failed: " + result.error);
-                            android.util.Log.d("MTV_DEBUG", "Providers attempted: " + result.providersAttempted);
-                            
-                            // Fallback to opening SPlayer website
-                            android.util.Log.d("MTV_DEBUG", "Opening SPlayer website as fallback");
-                            try {
-                                Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://splayer.dev/"));
-                                browserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                                startActivity(browserIntent);
-                            } catch (Exception e) {
-                                android.util.Log.e("MTV_DEBUG", "Failed to open browser: " + e.getMessage());
+            if (splayerInstalled) {
+                // SPlayer is installed - resolve streams and launch directly
+                android.util.Log.d("MTV_DEBUG", "SPlayer detected, resolving streams...");
+                
+                // Create MediaInfo for provider system
+                com.mtv.streaming.providers.Provider.MediaInfo mediaInfo = 
+                    new com.mtv.streaming.providers.Provider.MediaInfo(mediaId, mediaType, title, year);
+                
+                // Use ProviderManager to resolve streams
+                com.mtv.streaming.providers.ProviderManager.getInstance()
+                    .resolveStreams(mediaInfo)
+                    .thenAccept(result -> {
+                        runOnUiThread(() -> {
+                            if (result.success && result.bestSource != null) {
+                                android.util.Log.d("MTV_DEBUG", "✓ Stream resolved by " + result.providerUsed);
+                                android.util.Log.d("MTV_DEBUG", "Stream URL: " + result.bestSource.url);
+                                android.util.Log.d("MTV_DEBUG", "Quality: " + result.bestSource.quality);
+                                android.util.Log.d("MTV_DEBUG", "Type: " + result.bestSource.type);
+                                
+                                // Launch SPlayer with resolved stream
+                                boolean launched = SPlayerUtil.launchSPlayerDirect(MainActivity.this, 
+                                    result.bestSource.url, 
+                                    result.bestSource.getMimeType(), 
+                                    result.bestSource.headers);
+                                
+                                if (!launched) {
+                                    android.util.Log.w("MTV_DEBUG", "Direct launch failed, trying proxy method");
+                                    SPlayerUtil.open(MainActivity.this, 
+                                        result.bestSource.url, 
+                                        result.bestSource.getMimeType(), 
+                                        result.bestSource.headers);
+                                }
+                            } else {
+                                android.util.Log.e("MTV_DEBUG", "✗ Stream resolution failed: " + result.error);
+                                // Show error to user instead of opening website
+                                showToast("Failed to resolve stream. Please try again.");
                             }
-                        }
+                        });
+                    })
+                    .exceptionally(throwable -> {
+                        runOnUiThread(() -> {
+                            android.util.Log.e("MTV_DEBUG", "Provider system error: " + throwable.getMessage());
+                            showToast("Stream resolution error. Please try again.");
+                        });
+                        return null;
                     });
-                })
-                .exceptionally(throwable -> {
-                    runOnUiThread(() -> {
-                        android.util.Log.e("MTV_DEBUG", "Provider system error: " + throwable.getMessage());
-                        
-                        // Fallback to opening SPlayer website
-                        try {
-                            Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://splayer.dev/"));
-                            browserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                            startActivity(browserIntent);
-                        } catch (Exception e) {
-                            android.util.Log.e("MTV_DEBUG", "Failed to open browser: " + e.getMessage());
-                        }
-                    });
-                    return null;
-                });
+            } else {
+                // SPlayer is NOT installed - open website
+                android.util.Log.d("MTV_DEBUG", "SPlayer not installed, opening website");
+                try {
+                    Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://splayer.dev/"));
+                    browserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(browserIntent);
+                } catch (Exception e) {
+                    android.util.Log.e("MTV_DEBUG", "Failed to open browser: " + e.getMessage());
+                    showToast("Please install SPlayer from Play Store");
+                }
+            }
+        }
+        
+        private void showToast(String message) {
+            Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
         }
         
         @JavascriptInterface

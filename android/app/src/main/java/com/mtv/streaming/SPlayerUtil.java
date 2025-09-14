@@ -56,46 +56,47 @@ public class SPlayerUtil {
         }
         
         if (splayerInstalled) {
-            // Determine MIME type if not provided
-            String actualMimeType = mimeType;
-            if (actualMimeType == null) {
-                if (streamUrl.contains(".m3u8")) {
-                    actualMimeType = "application/x-mpegURL";
-                } else if (streamUrl.contains(".mp4")) {
-                    actualMimeType = "video/mp4";
-                } else {
-                    actualMimeType = "video/*";
-                }
-            }
-            
             // First attempt: Direct launch with headers
-            boolean directSuccess = attemptDirectLaunch(context, streamUrl, actualMimeType, headers);
+            boolean directSuccess = launchSPlayerDirect(context, streamUrl, mimeType, headers);
             
             if (!directSuccess && headers != null && !headers.isEmpty()) {
                 // Second attempt: Use local proxy for header handling
                 Log.d(TAG, "Direct launch failed, trying proxy mode for headers");
-                attemptProxyLaunch(context, streamUrl, actualMimeType, headers);
+                attemptProxyLaunch(context, streamUrl, mimeType, headers);
             }
             
             return;
         } else {
             Log.d(TAG, "SPlayer not installed, opening website");
+            openSPlayerWebsite(context);
         }
-
-        // Fallback: open SPlayer website in external browser
-        openSPlayerWebsite(context);
     }
     
-    private static boolean attemptDirectLaunch(Context context, String streamUrl, String mimeType, android.os.Bundle headers) {
+    /**
+     * Direct SPlayer launch method - returns success/failure
+     */
+    public static boolean launchSPlayerDirect(Context context, String streamUrl, String mimeType, android.os.Bundle headers) {
+        // Determine MIME type if not provided
+        String actualMimeType = mimeType;
+        if (actualMimeType == null) {
+            if (streamUrl.contains(".m3u8")) {
+                actualMimeType = "application/x-mpegURL";
+            } else if (streamUrl.contains(".mp4")) {
+                actualMimeType = "video/mp4";
+            } else {
+                actualMimeType = "video/*";
+            }
+        }
+        
         try {
             Log.d(TAG, "--- Direct Launch Attempt ---");
             Log.d(TAG, "URL: " + streamUrl);
-            Log.d(TAG, "MIME: " + mimeType);
+            Log.d(TAG, "MIME: " + actualMimeType);
             Log.d(TAG, "Target package: " + SPLAYER_PACKAGE);
             
             Uri uri = Uri.parse(streamUrl);
             Intent intent = new Intent(Intent.ACTION_VIEW);
-            intent.setDataAndType(uri, mimeType);
+            intent.setDataAndType(uri, actualMimeType);
             intent.setPackage(SPLAYER_PACKAGE);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             
@@ -114,7 +115,7 @@ public class SPlayerUtil {
                 context.startActivity(intent);
                 Log.d(TAG, "✓ Direct launch successful");
                 Log.d(TAG, "Final URL: " + streamUrl);
-                Log.d(TAG, "Final MIME: " + mimeType);
+                Log.d(TAG, "Final MIME: " + actualMimeType);
                 return true;
             } else {
                 Log.w(TAG, "✗ Intent could not be resolved - SPlayer may not support this MIME type");
