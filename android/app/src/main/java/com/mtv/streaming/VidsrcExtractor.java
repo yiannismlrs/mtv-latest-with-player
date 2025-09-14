@@ -149,10 +149,34 @@ public class VidsrcExtractor {
             connection.setInstanceFollowRedirects(true);
             
             int responseCode = connection.getResponseCode();
-            Log.d(TAG, "Embed page response code: " + responseCode);
+            Log.d(TAG, "=== HTTP RESPONSE INFO ===");
+            Log.d(TAG, "Response Code: " + responseCode);
+            Log.d(TAG, "Response Message: " + connection.getResponseMessage());
+            Log.d(TAG, "Content Type: " + connection.getContentType());
+            Log.d(TAG, "Content Length: " + connection.getContentLength());
+            Log.d(TAG, "URL: " + embedUrl);
             
             if (responseCode != 200) {
-                Log.e(TAG, "Failed to fetch embed page: HTTP " + responseCode);
+                Log.e(TAG, "❌ Failed to fetch embed page: HTTP " + responseCode + " - " + connection.getResponseMessage());
+                
+                // Try to read error response
+                try {
+                    BufferedReader errorReader = new BufferedReader(new InputStreamReader(connection.getErrorStream()));
+                    StringBuilder errorResponse = new StringBuilder();
+                    String errorLine;
+                    while ((errorLine = errorReader.readLine()) != null) {
+                        errorResponse.append(errorLine).append("\n");
+                    }
+                    errorReader.close();
+                    
+                    if (errorResponse.length() > 0) {
+                        String errorPreview = errorResponse.length() > 1000 ? errorResponse.substring(0, 1000) + "..." : errorResponse.toString();
+                        Log.e(TAG, "Error response content: " + errorPreview);
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "Could not read error response: " + e.getMessage());
+                }
+                
                 return null;
             }
             
@@ -167,6 +191,33 @@ public class VidsrcExtractor {
             
             String html = response.toString();
             Log.d(TAG, "Embed page HTML length: " + html.length());
+            
+            // Log the first 2000 characters of HTML content for debugging
+            if (html.length() > 0) {
+                String htmlPreview = html.length() > 2000 ? html.substring(0, 2000) + "..." : html;
+                Log.d(TAG, "=== HTML CONTENT PREVIEW ===");
+                Log.d(TAG, htmlPreview);
+                Log.d(TAG, "=== END HTML PREVIEW ===");
+                
+                // Check for common blocking indicators
+                if (html.toLowerCase().contains("cloudflare")) {
+                    Log.w(TAG, "⚠️ Cloudflare protection detected in HTML");
+                }
+                if (html.toLowerCase().contains("captcha")) {
+                    Log.w(TAG, "⚠️ CAPTCHA challenge detected in HTML");
+                }
+                if (html.toLowerCase().contains("blocked")) {
+                    Log.w(TAG, "⚠️ Request appears to be blocked");
+                }
+                if (html.toLowerCase().contains("403") || html.toLowerCase().contains("forbidden")) {
+                    Log.w(TAG, "⚠️ 403 Forbidden response detected");
+                }
+                if (html.length() < 500) {
+                    Log.w(TAG, "⚠️ Suspiciously short HTML response (possible blocking)");
+                }
+            } else {
+                Log.e(TAG, "❌ Empty HTML response received");
+            }
             
             return html;
             
