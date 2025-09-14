@@ -203,6 +203,7 @@ public class MainActivity extends Activity {
                         });
                         return null;
                     });
+                    
             } else {
                 // SPlayer is NOT installed - open website
                 android.util.Log.d("MTV_DEBUG", "✗ SPlayer not installed, opening website");
