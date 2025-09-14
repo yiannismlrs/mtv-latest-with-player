@@ -116,20 +116,28 @@ public class MainActivity extends Activity {
             android.util.Log.d("MTV_DEBUG", "Title: " + title);
             android.util.Log.d("MTV_DEBUG", "Year: " + year);
             
-            // First check if SPlayer is installed
-            // For now, let's just open the embed URL directly to test if streams work
+            // Open in native video player instead of SPlayer
             String embedUrl = buildEmbedUrl(mediaId, mediaType);
-            android.util.Log.d("MTV_DEBUG", "Opening embed URL: " + embedUrl);
+            android.util.Log.d("MTV_DEBUG", "Opening in native player: " + embedUrl);
             
             try {
-                Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(embedUrl));
-                browserIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(browserIntent);
-                android.util.Log.d("MTV_DEBUG", "✓ Opened embed URL in browser");
-                showToast("Opening stream in browser...");
+                Intent playerIntent = new Intent(MainActivity.this, VideoPlayerActivity.class);
+                playerIntent.putExtra(VideoPlayerActivity.EXTRA_VIDEO_URL, embedUrl);
+                playerIntent.putExtra(VideoPlayerActivity.EXTRA_VIDEO_TITLE, title);
+                
+                // Add headers for better compatibility
+                Bundle headers = new Bundle();
+                headers.putString("User-Agent", "Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36");
+                headers.putString("Referer", "https://vidsrc.net/");
+                headers.putString("Origin", "https://vidsrc.net");
+                playerIntent.putExtra(VideoPlayerActivity.EXTRA_HEADERS, headers);
+                
+                startActivity(playerIntent);
+                android.util.Log.d("MTV_DEBUG", "✓ Opened native video player");
+                showToast("Opening video player...");
             } catch (Exception e) {
-                android.util.Log.e("MTV_DEBUG", "Failed to open embed URL: " + e.getMessage());
-                showToast("Failed to open stream");
+                android.util.Log.e("MTV_DEBUG", "Failed to open video player: " + e.getMessage());
+                showToast("Failed to open video player");
             }
         }
         
