@@ -116,6 +116,12 @@ public class MainActivity extends Activity {
             android.util.Log.d("MTV_DEBUG", "Title: " + title);
             android.util.Log.d("MTV_DEBUG", "Year: " + year);
             
+            // Test the working URL format
+            if ("18415".equals(mediaId)) {
+                android.util.Log.d("MTV_DEBUG", "*** TESTING WITH KNOWN WORKING MOVIE ID 18415 ***");
+                android.util.Log.d("MTV_DEBUG", "Expected working URL: https://vidsrc.to/embed/movie/18415");
+            }
+            
             runOnUiThread(() -> showToast("Extracting stream..."));
             
             // Use proper VidSrc.to extractor

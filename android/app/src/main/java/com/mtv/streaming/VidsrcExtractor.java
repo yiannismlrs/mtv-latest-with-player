@@ -80,8 +80,15 @@ public class VidsrcExtractor {
                 List<ServerInfo> servers = extractServers(embedHtml);
                 Log.d(TAG, "Found " + servers.size() + " servers");
                 
+                // If no servers found, try alternative extraction methods
                 if (servers.isEmpty()) {
-                    return new StreamResult("No servers found in embed page");
+                    Log.w(TAG, "No servers found with primary method, trying alternatives...");
+                    servers = tryAlternativeServerExtraction(embedHtml);
+                    Log.d(TAG, "Alternative extraction found " + servers.size() + " servers");
+                }
+                
+                if (servers.isEmpty()) {
+                    return new StreamResult("No servers found in embed page. URL tested: " + embedUrl);
                 }
                 
                 // Step 4: Try each server until we find a working stream
@@ -114,12 +121,21 @@ public class VidsrcExtractor {
      * Build VidSrc.to embed URL
      */
     private static String buildEmbedUrl(String mediaId, String mediaType) {
+        String embedUrl;
         if ("movie".equals(mediaType)) {
-            return BASE_URL + "/movie/" + mediaId;
+            embedUrl = BASE_URL + "/movie/" + mediaId;
         } else {
             // For TV shows, default to season 1, episode 1
-            return BASE_URL + "/tv/" + mediaId + "/1/1";
+            embedUrl = BASE_URL + "/tv/" + mediaId + "/1/1";
         }
+        
+        Log.d(TAG, "=== URL BUILDING DEBUG ===");
+        Log.d(TAG, "Input Media ID: " + mediaId);
+        Log.d(TAG, "Input Media Type: " + mediaType);
+        Log.d(TAG, "Built Embed URL: " + embedUrl);
+        Log.d(TAG, "Expected working URL format: https://vidsrc.to/embed/movie/18415");
+        
+        return embedUrl;
     }
     
     /**
@@ -234,6 +250,8 @@ public class VidsrcExtractor {
         List<ServerInfo> servers = new ArrayList<>();
         
         try {
+            Log.d(TAG, "=== SERVER EXTRACTION DEBUG ===");
+            
             // Pattern to match server buttons with data-hash attributes
             // Based on the documentation: <div class="server" data-hash="...">Server Name</div>
             Pattern serverPattern = Pattern.compile(
@@ -242,10 +260,14 @@ public class VidsrcExtractor {
             );
             
             Matcher matcher = serverPattern.matcher(html);
+            int matchCount = 0;
             
             while (matcher.find()) {
+                matchCount++;
                 String dataHash = matcher.group(1);
                 String serverName = matcher.group(2);
+                
+                Log.d(TAG, "Match " + matchCount + " - Raw hash: '" + dataHash + "', Raw name: '" + serverName + "'");
                 
                 // Clean up server name
                 if (serverName != null) {
@@ -259,20 +281,29 @@ public class VidsrcExtractor {
                     servers.add(server);
                     
                     Log.d(TAG, "Found server: " + serverName + " (hash: " + dataHash + ")");
+                } else {
+                    Log.w(TAG, "✗ Skipped invalid server - hash: '" + dataHash + "', name: '" + serverName + "'");
                 }
             }
             
+            Log.d(TAG, "Primary pattern found " + matchCount + " matches, " + servers.size() + " valid servers");
+            
             // Alternative pattern for different HTML structure
             if (servers.isEmpty()) {
+                Log.d(TAG, "Trying alternative pattern...");
                 Pattern altPattern = Pattern.compile(
                     "<[^>]*data-hash=[\"'](.*?)[\"'][^>]*>([^<]+)</[^>]*>", 
                     Pattern.CASE_INSENSITIVE
                 );
                 
                 Matcher altMatcher = altPattern.matcher(html);
+                int altMatchCount = 0;
                 while (altMatcher.find()) {
+                    altMatchCount++;
                     String dataHash = altMatcher.group(1);
                     String serverName = altMatcher.group(2).trim();
+                    
+                    Log.d(TAG, "Alt Match " + altMatchCount + " - hash: '" + dataHash + "', name: '" + serverName + "'");
                     
                     if (!dataHash.isEmpty() && !serverName.isEmpty()) {
                         ServerInfo server = new ServerInfo();
@@ -283,10 +314,84 @@ public class VidsrcExtractor {
                         Log.d(TAG, "Found server (alt pattern): " + serverName + " (hash: " + dataHash + ")");
                     }
                 }
+                Log.d(TAG, "Alternative pattern found " + altMatchCount + " matches");
             }
             
         } catch (Exception e) {
             Log.e(TAG, "Error extracting servers: " + e.getMessage());
+        }
+        
+        Log.d(TAG, "=== FINAL SERVER COUNT: " + servers.size() + " ===");
+        return servers;
+    }
+    
+    /**
+     * Try alternative patterns for server extraction if main method fails
+     */
+    private static List<ServerInfo> tryAlternativeServerExtraction(String html) {
+        List<ServerInfo> servers = new ArrayList<>();
+        
+        Log.d(TAG, "--- Trying Alternative Server Patterns ---");
+        
+        try {
+            // Pattern 1: Look for any element with data-hash attribute
+            Pattern pattern1 = Pattern.compile("data-hash=[\"'](.*?)[\"']", Pattern.CASE_INSENSITIVE);
+            Matcher matcher1 = pattern1.matcher(html);
+            
+            int count = 0;
+            while (matcher1.find() && count < 10) { // Limit to prevent spam
+                String dataHash = matcher1.group(1);
+                if (dataHash != null && !dataHash.isEmpty()) {
+                    ServerInfo server = new ServerInfo();
+                    server.dataHash = dataHash;
+                    server.name = "Server " + (count + 1); // Generic name
+                    servers.add(server);
+                    Log.d(TAG, "Alt Pattern 1 - Found hash: " + dataHash);
+                    count++;
+                }
+            }
+            
+            // Pattern 2: Look for server-like class names
+            Pattern pattern2 = Pattern.compile("class=[\"'][^\"']*server[^\"']*[\"'][^>]*data-hash=[\"'](.*?)[\"']", Pattern.CASE_INSENSITIVE);
+            Matcher matcher2 = pattern2.matcher(html);
+            
+            while (matcher2.find()) {
+                String dataHash = matcher2.group(1);
+                if (dataHash != null && !dataHash.isEmpty()) {
+                    // Check if we already have this hash
+                    boolean exists = servers.stream().anyMatch(s -> s.dataHash.equals(dataHash));
+                    if (!exists) {
+                        ServerInfo server = new ServerInfo();
+                        server.dataHash = dataHash;
+                        server.name = "Server (class pattern)";
+                        servers.add(server);
+                        Log.d(TAG, "Alt Pattern 2 - Found hash: " + dataHash);
+                    }
+                }
+            }
+            
+            // Pattern 3: Look for button elements with data-hash
+            Pattern pattern3 = Pattern.compile("<button[^>]*data-hash=[\"'](.*?)[\"'][^>]*>(.*?)</button>", Pattern.CASE_INSENSITIVE);
+            Matcher matcher3 = pattern3.matcher(html);
+            
+            while (matcher3.find()) {
+                String dataHash = matcher3.group(1);
+                String buttonText = matcher3.group(2).replaceAll("<[^>]*>", "").trim();
+                
+                if (dataHash != null && !dataHash.isEmpty()) {
+                    boolean exists = servers.stream().anyMatch(s -> s.dataHash.equals(dataHash));
+                    if (!exists) {
+                        ServerInfo server = new ServerInfo();
+                        server.dataHash = dataHash;
+                        server.name = buttonText.isEmpty() ? "Button Server" : buttonText;
+                        servers.add(server);
+                        Log.d(TAG, "Alt Pattern 3 - Found button: " + buttonText + " (hash: " + dataHash + ")");
+                    }
+                }
+            }
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Error in alternative server extraction: " + e.getMessage());
         }
         
         return servers;
