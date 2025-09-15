@@ -30,7 +30,6 @@ public class MultiSourceExtractor {
         
         // Add extractors in priority order (most reliable first)
         extractors.add(new VidsrcToExtractor());
-        extractors.add(new VidsrcExtractor());
         extractors.add(new SuperStreamExtractor());
         extractors.add(new EmbedSuExtractor());
         extractors.add(new TwoEmbedExtractor());
