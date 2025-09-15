@@ -116,23 +116,18 @@ public class MainActivity extends Activity {
             android.util.Log.d("MTV_DEBUG", "Title: " + title);
             android.util.Log.d("MTV_DEBUG", "Year: " + year);
             
-            // Test the working URL format
-            if ("18415".equals(mediaId)) {
-                android.util.Log.d("MTV_DEBUG", "*** TESTING WITH KNOWN WORKING MOVIE ID 18415 ***");
-                android.util.Log.d("MTV_DEBUG", "Expected working URL: https://vidsrc.to/embed/movie/18415");
-            }
+            runOnUiThread(() -> showToast("OnStream-style extraction starting..."));
             
-            runOnUiThread(() -> showToast("Extracting stream..."));
-            
-            // Use proper VidSrc.to extractor
-            VidsrcExtractor.resolveStream(mediaId, mediaType, title, year, new VidsrcExtractor.StreamCallback() {
+            // Use OnStream-style multi-source extractor
+            OnStreamExtractor.resolveStream(mediaId, mediaType, title, year, new OnStreamExtractor.StreamCallback() {
                 @Override
-                public void onStreamResolved(VidsrcExtractor.StreamResult result) {
+                public void onStreamResolved(OnStreamExtractor.StreamResult result) {
                     runOnUiThread(() -> {
                         if (result.success) {
-                            android.util.Log.d("MTV_DEBUG", "✓ Stream extraction successful");
+                            android.util.Log.d("MTV_DEBUG", "✓ OnStream extraction successful");
                             android.util.Log.d("MTV_DEBUG", "Stream URL: " + result.url);
                             android.util.Log.d("MTV_DEBUG", "MIME Type: " + result.mimeType);
+                            android.util.Log.d("MTV_DEBUG", "Source Used: " + result.sourceUsed);
                             
                             try {
                                 Intent playerIntent = new Intent(MainActivity.this, VideoPlayerActivity.class);
@@ -141,15 +136,15 @@ public class MainActivity extends Activity {
                                 playerIntent.putExtra(VideoPlayerActivity.EXTRA_HEADERS, result.headers);
                                 
                                 startActivity(playerIntent);
-                                android.util.Log.d("MTV_DEBUG", "✓ Opened video player with extracted stream");
+                                android.util.Log.d("MTV_DEBUG", "✓ Opened video player with OnStream-extracted stream");
                                 showToast("Opening video player...");
                             } catch (Exception e) {
                                 android.util.Log.e("MTV_DEBUG", "Failed to open video player: " + e.getMessage());
                                 showToast("Failed to open video player: " + e.getMessage());
                             }
                         } else {
-                            android.util.Log.e("MTV_DEBUG", "✗ Stream extraction failed: " + result.error);
-                            showToast("Stream extraction failed: " + result.error);
+                            android.util.Log.e("MTV_DEBUG", "✗ OnStream extraction failed: " + result.error);
+                            showToast("OnStream extraction failed: " + result.error);
                         }
                     });
                 }
