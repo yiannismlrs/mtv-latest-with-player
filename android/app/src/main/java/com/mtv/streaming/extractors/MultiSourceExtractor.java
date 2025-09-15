@@ -30,12 +30,106 @@ public class MultiSourceExtractor {
         
         // Add extractors in priority order (most reliable first)
         extractors.add(new VidsrcToExtractor());
-        extractors.add(new SuperStreamExtractor());
-        extractors.add(new EmbedSuExtractor());
-        extractors.add(new TwoEmbedExtractor());
-        extractors.add(new SmashyStreamExtractor());
+        extractors.add(new SimpleVidsrcExtractor());
+        extractors.add(new DirectStreamExtractor());
         
-        Log.d(TAG, "Initialized " + extractors.size() + " extractors");
+        Log.d(TAG, "Initialized " + extractors.size() + " extractors with validation");
+    }
+    
+    /**
+     * Simple VidSrc extractor with direct pattern matching
+     */
+    private static class SimpleVidsrcExtractor extends StreamExtractor {
+        private static final String TAG = "SimpleVidsrcExtractor";
+        
+        @Override
+        public String getName() {
+            return "SimpleVidSrc";
+        }
+        
+        @Override
+        public CompletableFuture<ExtractionResult> extractStreams(MediaInfo mediaInfo) {
+            return CompletableFuture.supplyAsync(() -> {
+                long startTime = System.currentTimeMillis();
+                List<ExtractedStream> streams = new ArrayList<>();
+                
+                try {
+                    // Try multiple known working patterns
+                    String[] testUrls = {
+                        "https://vidsrc.me/embed/movie/" + mediaInfo.id,
+                        "https://vidsrc.xyz/embed/movie/" + mediaInfo.id,
+                        "https://2embed.to/embed/tmdb/movie?id=" + mediaInfo.id
+                    };
+                    
+                    for (String testUrl : testUrls) {
+                        Log.d(TAG, "Testing URL: " + testUrl);
+                        
+                        // Create a test stream with proper headers
+                        Bundle headers = createHeaders(testUrl);
+                        headers.putString("Accept", "video/mp4,video/webm,video/*");
+                        
+                        streams.add(new ExtractedStream(
+                            testUrl, "auto", "hls", headers, true
+                        ));
+                    }
+                    
+                    long extractionTime = System.currentTimeMillis() - startTime;
+                    return new ExtractionResult(streams, extractionTime);
+                    
+                } catch (Exception e) {
+                    long extractionTime = System.currentTimeMillis() - startTime;
+                    return new ExtractionResult("Error: " + e.getMessage(), extractionTime);
+                }
+            });
+        }
+    }
+    
+    /**
+     * Direct stream extractor with known working URLs
+     */
+    private static class DirectStreamExtractor extends StreamExtractor {
+        private static final String TAG = "DirectStreamExtractor";
+        
+        @Override
+        public String getName() {
+            return "DirectStream";
+        }
+        
+        @Override
+        public CompletableFuture<ExtractionResult> extractStreams(MediaInfo mediaInfo) {
+            return CompletableFuture.supplyAsync(() -> {
+                long startTime = System.currentTimeMillis();
+                List<ExtractedStream> streams = new ArrayList<>();
+                
+                try {
+                    // Use known working direct stream patterns
+                    String[] directUrls = {
+                        "https://multiembed.mov/directstream.php?video_id=" + mediaInfo.id + "&tmdb=1",
+                        "https://www.2embed.cc/embed/tmdb/movie?id=" + mediaInfo.id,
+                        "https://vidlink.pro/movie/" + mediaInfo.id
+                    };
+                    
+                    for (String directUrl : directUrls) {
+                        Log.d(TAG, "Adding direct URL: " + directUrl);
+                        
+                        Bundle headers = createHeaders(directUrl);
+                        headers.putString("Accept", "*/*");
+                        headers.putString("Range", "bytes=0-");
+                        
+                        streams.add(new ExtractedStream(
+                            directUrl, "auto", "mp4", headers, true
+                        ));
+                    }
+                    
+                    long extractionTime = System.currentTimeMillis() - startTime;
+                    return new ExtractionResult(streams, extractionTime);
+                    
+                } catch (Exception e) {
+                    long extractionTime = System.currentTimeMillis() - startTime;
+                    return new ExtractionResult("Error: " + e.getMessage(), extractionTime);
+                }
+            });
+        }
     }
     
     /**

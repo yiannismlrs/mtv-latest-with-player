@@ -129,6 +129,19 @@ public class MainActivity extends Activity {
                             android.util.Log.d("MTV_DEBUG", "MIME Type: " + result.mimeType);
                             android.util.Log.d("MTV_DEBUG", "Source Used: " + result.sourceUsed);
                             
+                            // Validate stream URL before launching player
+                            if (result.url == null || result.url.isEmpty()) {
+                                android.util.Log.e("MTV_DEBUG", "✗ Stream URL is null or empty");
+                                showToast("Stream URL is invalid");
+                                return;
+                            }
+                            
+                            // Log stream details for debugging
+                            android.util.Log.d("MTV_DEBUG", "=== STREAM DETAILS ===");
+                            android.util.Log.d("MTV_DEBUG", "URL: " + result.url);
+                            android.util.Log.d("MTV_DEBUG", "MIME: " + result.mimeType);
+                            android.util.Log.d("MTV_DEBUG", "Headers count: " + (result.headers != null ? result.headers.size() : 0));
+                            
                             try {
                                 Intent playerIntent = new Intent(MainActivity.this, VideoPlayerActivity.class);
                                 playerIntent.putExtra(VideoPlayerActivity.EXTRA_VIDEO_URL, result.url);
@@ -144,7 +157,7 @@ public class MainActivity extends Activity {
                             }
                         } else {
                             android.util.Log.e("MTV_DEBUG", "✗ OnStream extraction failed: " + result.error);
-                            showToast("OnStream extraction failed: " + result.error);
+                            showToast("Stream extraction failed. Please try another movie.");
                         }
                     });
                 }

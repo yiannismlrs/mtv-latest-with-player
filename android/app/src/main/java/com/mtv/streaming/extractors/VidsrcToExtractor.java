@@ -19,7 +19,7 @@ import java.util.regex.Matcher;
  */
 public class VidsrcToExtractor extends MultiSourceExtractor.StreamExtractor {
     private static final String TAG = "VidsrcToExtractor";
-    private static final String BASE_URL = "https://vidsrc.pro/embed";
+    private static final String BASE_URL = "https://vidsrc.to/embed";
     private static final ExecutorService executor = Executors.newCachedThreadPool();
     
     @Override
@@ -85,11 +85,11 @@ public class VidsrcToExtractor extends MultiSourceExtractor.StreamExtractor {
     
     private String buildEmbedUrl(MultiSourceExtractor.MediaInfo mediaInfo) {
         if (mediaInfo.isMovie()) {
-            return BASE_URL + "/movie?tmdb=" + mediaInfo.id;
+            return BASE_URL + "/movie/" + mediaInfo.id;
         } else {
             int season = mediaInfo.season != null ? mediaInfo.season : 1;
             int episode = mediaInfo.episode != null ? mediaInfo.episode : 1;
-            return BASE_URL + "/tv?tmdb=" + mediaInfo.id + "&season=" + season + "&episode=" + episode;
+            return BASE_URL + "/tv/" + mediaInfo.id + "/" + season + "/" + episode;
         }
     }
     
@@ -116,6 +116,7 @@ public class VidsrcToExtractor extends MultiSourceExtractor.StreamExtractor {
             connection.setRequestProperty("sec-ch-ua-platform", "\"Windows\"");
             connection.setRequestProperty("DNT", "1");
             connection.setRequestProperty("Connection", "keep-alive");
+            connection.setRequestProperty("Referer", "https://vidsrc.to/");
             
             connection.setConnectTimeout(15000);
             connection.setReadTimeout(20000);
@@ -149,9 +150,9 @@ public class VidsrcToExtractor extends MultiSourceExtractor.StreamExtractor {
     private List<ServerInfo> extractServers(String html) {
         List<ServerInfo> servers = new ArrayList<>();
         
-        // Updated pattern for current vidsrc structure
+        // Pattern for data-hash attributes
         Pattern serverPattern = Pattern.compile(
-            "data-id=[\"']([^\"']+)[\"'][^>]*class=[\"'][^\"']*server[^\"']*[\"'][^>]*>([^<]*)</[^>]*>", 
+            "data-hash=[\"']([^\"']+)[\"'][^>]*>([^<]*)</[^>]*>", 
             Pattern.CASE_INSENSITIVE
         );
         
@@ -172,7 +173,7 @@ public class VidsrcToExtractor extends MultiSourceExtractor.StreamExtractor {
         
         // Fallback pattern for data-hash only
         if (servers.isEmpty()) {
-            Pattern hashPattern = Pattern.compile("(?:data-id|data-hash)=[\"']([^\"']{10,})[\"']");
+            Pattern hashPattern = Pattern.compile("data-hash=[\"']([^\"']{10,})[\"']");
             Matcher hashMatcher = hashPattern.matcher(html);
             
             int count = 0;
@@ -193,9 +194,8 @@ public class VidsrcToExtractor extends MultiSourceExtractor.StreamExtractor {
         try {
             // Try multiple RCP endpoints
             String[] rcpUrls = {
-                "https://vidsrc.pro/ajax/embed/episode/" + server.dataHash + "/sources",
                 "https://vidsrc.to/rcp/" + server.dataHash,
-                "https://vidsrc.pro/rcp/" + server.dataHash
+                "https://vidsrc.to/ajax/embed/episode/" + server.dataHash + "/sources"
             };
             
             for (String rcpUrl : rcpUrls) {
@@ -223,7 +223,7 @@ public class VidsrcToExtractor extends MultiSourceExtractor.StreamExtractor {
             connection.setRequestProperty("Accept", "*/*");
             connection.setRequestProperty("Accept-Language", "en-US,en;q=0.9");
             connection.setRequestProperty("Referer", referer);
-            connection.setRequestProperty("Origin", "https://vidsrc.pro");
+            connection.setRequestProperty("Origin", "https://vidsrc.to");
             connection.setRequestProperty("X-Requested-With", "XMLHttpRequest");
             connection.setRequestProperty("sec-ch-ua", "\"Not_A Brand\";v=\"8\", \"Chromium\";v=\"120\"");
             connection.setRequestProperty("sec-ch-ua-mobile", "?0");
@@ -304,11 +304,11 @@ public class VidsrcToExtractor extends MultiSourceExtractor.StreamExtractor {
             String host = url.getHost();
             
             if (host != null && host.contains("vidsrc")) {
-                headers.putString("Referer", "https://vidsrc.pro/");
-                headers.putString("Origin", "https://vidsrc.pro");
+                headers.putString("Referer", "https://vidsrc.to/");
+                headers.putString("Origin", "https://vidsrc.to");
             }
         } catch (Exception e) {
-            headers.putString("Referer", "https://vidsrc.pro/");
+            headers.putString("Referer", "https://vidsrc.to/");
         }
         
         return headers;
