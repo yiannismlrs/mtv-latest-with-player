@@ -19,12 +19,12 @@ import java.util.regex.Matcher;
  */
 public class SuperStreamExtractor extends MultiSourceExtractor.StreamExtractor {
     private static final String TAG = "SuperStreamExtractor";
-    private static final String BASE_URL = "https://embed.su/embed";
+    private static final String BASE_URL = "https://multiembed.mov";
     private static final ExecutorService executor = Executors.newCachedThreadPool();
     
     @Override
     public String getName() {
-        return "SuperStream";
+        return "MultiEmbed";
     }
     
     @Override
@@ -65,11 +65,11 @@ public class SuperStreamExtractor extends MultiSourceExtractor.StreamExtractor {
     
     private String buildEmbedUrl(MultiSourceExtractor.MediaInfo mediaInfo) {
         if (mediaInfo.isMovie()) {
-            return BASE_URL + "/movie/" + mediaInfo.id;
+            return BASE_URL + "/directstream.php?video_id=" + mediaInfo.id + "&tmdb=1";
         } else {
             int season = mediaInfo.season != null ? mediaInfo.season : 1;
             int episode = mediaInfo.episode != null ? mediaInfo.episode : 1;
-            return BASE_URL + "/tv/" + mediaInfo.id + "/" + season + "/" + episode;
+            return BASE_URL + "/directstream.php?video_id=" + mediaInfo.id + "&tmdb=1&s=" + season + "&e=" + episode;
         }
     }
     
@@ -82,7 +82,8 @@ public class SuperStreamExtractor extends MultiSourceExtractor.StreamExtractor {
             connection.setRequestProperty("Accept", 
                 "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
             connection.setRequestProperty("Accept-Language", "en-US,en;q=0.9");
-            connection.setRequestProperty("Referer", "https://embed.su/");
+            connection.setRequestProperty("Referer", "https://multiembed.mov/");
+            connection.setRequestProperty("Origin", "https://multiembed.mov");
             
             connection.setConnectTimeout(15000);
             connection.setReadTimeout(20000);
@@ -115,7 +116,22 @@ public class SuperStreamExtractor extends MultiSourceExtractor.StreamExtractor {
     private List<MultiSourceExtractor.ExtractedStream> extractStreamsFromHtml(String html, String referer) {
         List<MultiSourceExtractor.ExtractedStream> streams = new ArrayList<>();
         
-        // Pattern 1: Direct M3U8 URLs
+        // Look for direct stream URLs in the response
+        Pattern directStreamPattern = Pattern.compile("(https?://[^\\s\"'<>]+(?:stream|play|video)[^\\s\"'<>]*)", Pattern.CASE_INSENSITIVE);
+        Matcher directMatcher = directStreamPattern.matcher(html);
+        
+        while (directMatcher.find()) {
+            String streamUrl = directMatcher.group(1);
+            Bundle headers = createStreamHeaders(streamUrl, referer);
+            
+            streams.add(new MultiSourceExtractor.ExtractedStream(
+                streamUrl, "auto", "hls", headers, true
+            ));
+            
+            Log.d(TAG, "Found direct stream: " + streamUrl);
+        }
+        
+        // Pattern 1: M3U8 URLs
         Pattern m3u8Pattern = Pattern.compile("(https?://[^\\s\"']+\\.m3u8(?:\\?[^\\s\"']*)?)", Pattern.CASE_INSENSITIVE);
         Matcher m3u8Matcher = m3u8Pattern.matcher(html);
         
@@ -174,11 +190,14 @@ public class SuperStreamExtractor extends MultiSourceExtractor.StreamExtractor {
             String host = url.getHost();
             
             if (host != null && host.contains("embed.su")) {
-                headers.putString("Referer", "https://embed.su/");
-                headers.putString("Origin", "https://embed.su");
+                headers.putString("Referer", "https://multiembed.mov/");
+                headers.putString("Origin", "https://multiembed.mov");
+            } else if (host != null && host.contains("multiembed")) {
+                headers.putString("Referer", "https://multiembed.mov/");
+                headers.putString("Origin", "https://multiembed.mov");
             }
         } catch (Exception e) {
-            headers.putString("Referer", "https://embed.su/");
+            headers.putString("Referer", "https://multiembed.mov/");
         }
         
         return headers;

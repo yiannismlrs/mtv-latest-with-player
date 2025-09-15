@@ -19,12 +19,12 @@ import java.util.regex.Matcher;
  */
 public class TwoEmbedExtractor extends MultiSourceExtractor.StreamExtractor {
     private static final String TAG = "TwoEmbedExtractor";
-    private static final String BASE_URL = "https://www.2embed.cc/embed";
+    private static final String BASE_URL = "https://vidlink.pro/movie";
     private static final ExecutorService executor = Executors.newCachedThreadPool();
     
     @Override
     public String getName() {
-        return "2Embed.cc";
+        return "VidLink";
     }
     
     @Override
@@ -69,7 +69,7 @@ public class TwoEmbedExtractor extends MultiSourceExtractor.StreamExtractor {
         } else {
             int season = mediaInfo.season != null ? mediaInfo.season : 1;
             int episode = mediaInfo.episode != null ? mediaInfo.episode : 1;
-            return BASE_URL + "/" + mediaInfo.id + "/" + season + "/" + episode;
+            return "https://vidlink.pro/tv/" + mediaInfo.id + "/" + season + "/" + episode;
         }
     }
     
@@ -82,7 +82,8 @@ public class TwoEmbedExtractor extends MultiSourceExtractor.StreamExtractor {
             connection.setRequestProperty("Accept", 
                 "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
             connection.setRequestProperty("Accept-Language", "en-US,en;q=0.9");
-            connection.setRequestProperty("Referer", "https://www.2embed.cc/");
+            connection.setRequestProperty("Referer", "https://vidlink.pro/");
+            connection.setRequestProperty("Origin", "https://vidlink.pro");
             
             connection.setConnectTimeout(15000);
             connection.setReadTimeout(20000);
@@ -114,6 +115,23 @@ public class TwoEmbedExtractor extends MultiSourceExtractor.StreamExtractor {
     
     private List<MultiSourceExtractor.ExtractedStream> extractStreamsFromHtml(String html, String referer) {
         List<MultiSourceExtractor.ExtractedStream> streams = new ArrayList<>();
+        
+        // Look for iframe sources first
+        Pattern iframePattern = Pattern.compile("<iframe[^>]*src=[\"']([^\"']+)[\"'][^>]*>", Pattern.CASE_INSENSITIVE);
+        Matcher iframeMatcher = iframePattern.matcher(html);
+        
+        while (iframeMatcher.find()) {
+            String iframeSrc = iframeMatcher.group(1);
+            if (iframeSrc.startsWith("http") && (iframeSrc.contains("stream") || iframeSrc.contains("play") || iframeSrc.contains("video"))) {
+                Bundle headers = createStreamHeaders(iframeSrc, referer);
+                
+                streams.add(new MultiSourceExtractor.ExtractedStream(
+                    iframeSrc, "auto", "hls", headers, true
+                ));
+                
+                Log.d(TAG, "Found iframe stream: " + iframeSrc);
+            }
+        }
         
         // Pattern for M3U8 URLs
         Pattern m3u8Pattern = Pattern.compile("(https?://[^\\s\"']+\\.m3u8(?:\\?[^\\s\"']*)?)", Pattern.CASE_INSENSITIVE);
@@ -156,11 +174,14 @@ public class TwoEmbedExtractor extends MultiSourceExtractor.StreamExtractor {
             String host = url.getHost();
             
             if (host != null && host.contains("2embed")) {
-                headers.putString("Referer", "https://www.2embed.cc/");
-                headers.putString("Origin", "https://www.2embed.cc");
+                headers.putString("Referer", "https://vidlink.pro/");
+                headers.putString("Origin", "https://vidlink.pro");
+            } else if (host != null && host.contains("vidlink")) {
+                headers.putString("Referer", "https://vidlink.pro/");
+                headers.putString("Origin", "https://vidlink.pro");
             }
         } catch (Exception e) {
-            headers.putString("Referer", "https://www.2embed.cc/");
+            headers.putString("Referer", "https://vidlink.pro/");
         }
         
         return headers;

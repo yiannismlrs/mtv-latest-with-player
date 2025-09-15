@@ -19,12 +19,12 @@ import java.util.regex.Matcher;
  */
 public class EmbedSuExtractor extends MultiSourceExtractor.StreamExtractor {
     private static final String TAG = "EmbedSuExtractor";
-    private static final String BASE_URL = "https://www.2embed.to/embed/tmdb";
+    private static final String BASE_URL = "https://www.2embed.cc/embed";
     private static final ExecutorService executor = Executors.newCachedThreadPool();
     
     @Override
     public String getName() {
-        return "2Embed.to";
+        return "2Embed.cc";
     }
     
     @Override
@@ -65,11 +65,11 @@ public class EmbedSuExtractor extends MultiSourceExtractor.StreamExtractor {
     
     private String buildEmbedUrl(MultiSourceExtractor.MediaInfo mediaInfo) {
         if (mediaInfo.isMovie()) {
-            return BASE_URL + "/movie?id=" + mediaInfo.id;
+            return BASE_URL + "/tmdb/movie?id=" + mediaInfo.id;
         } else {
             int season = mediaInfo.season != null ? mediaInfo.season : 1;
             int episode = mediaInfo.episode != null ? mediaInfo.episode : 1;
-            return BASE_URL + "/tv?id=" + mediaInfo.id + "&s=" + season + "&e=" + episode;
+            return BASE_URL + "/tmdb/tv?id=" + mediaInfo.id + "&s=" + season + "&e=" + episode;
         }
     }
     
@@ -82,7 +82,8 @@ public class EmbedSuExtractor extends MultiSourceExtractor.StreamExtractor {
             connection.setRequestProperty("Accept", 
                 "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
             connection.setRequestProperty("Accept-Language", "en-US,en;q=0.9");
-            connection.setRequestProperty("Referer", "https://www.2embed.to/");
+            connection.setRequestProperty("Referer", "https://www.2embed.cc/");
+            connection.setRequestProperty("Origin", "https://www.2embed.cc");
             
             connection.setConnectTimeout(15000);
             connection.setReadTimeout(20000);
@@ -185,11 +186,11 @@ public class EmbedSuExtractor extends MultiSourceExtractor.StreamExtractor {
             String host = url.getHost();
             
             if (host != null && host.contains("2embed")) {
-                headers.putString("Referer", "https://www.2embed.to/");
-                headers.putString("Origin", "https://www.2embed.to");
+                headers.putString("Referer", "https://www.2embed.cc/");
+                headers.putString("Origin", "https://www.2embed.cc");
             }
         } catch (Exception e) {
-            headers.putString("Referer", "https://www.2embed.to/");
+            headers.putString("Referer", "https://www.2embed.cc/");
         }
         
         return headers;

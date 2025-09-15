@@ -19,12 +19,12 @@ import java.util.regex.Matcher;
  */
 public class SmashyStreamExtractor extends MultiSourceExtractor.StreamExtractor {
     private static final String TAG = "SmashyStreamExtractor";
-    private static final String BASE_URL = "https://embed.smashystream.com";
+    private static final String BASE_URL = "https://moviesapi.club";
     private static final ExecutorService executor = Executors.newCachedThreadPool();
     
     @Override
     public String getName() {
-        return "SmashyStream";
+        return "MoviesAPI";
     }
     
     @Override
@@ -65,11 +65,11 @@ public class SmashyStreamExtractor extends MultiSourceExtractor.StreamExtractor 
     
     private String buildEmbedUrl(MultiSourceExtractor.MediaInfo mediaInfo) {
         if (mediaInfo.isMovie()) {
-            return BASE_URL + "/playere.php?tmdb=" + mediaInfo.id;
+            return BASE_URL + "/movie/" + mediaInfo.id;
         } else {
             int season = mediaInfo.season != null ? mediaInfo.season : 1;
             int episode = mediaInfo.episode != null ? mediaInfo.episode : 1;
-            return BASE_URL + "/playere.php?tmdb=" + mediaInfo.id + "&season=" + season + "&episode=" + episode;
+            return BASE_URL + "/tv/" + mediaInfo.id + "-" + season + "-" + episode;
         }
     }
     
@@ -82,7 +82,8 @@ public class SmashyStreamExtractor extends MultiSourceExtractor.StreamExtractor 
             connection.setRequestProperty("Accept", 
                 "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
             connection.setRequestProperty("Accept-Language", "en-US,en;q=0.9");
-            connection.setRequestProperty("Referer", "https://embed.smashystream.com/");
+            connection.setRequestProperty("Referer", "https://moviesapi.club/");
+            connection.setRequestProperty("Origin", "https://moviesapi.club");
             
             connection.setConnectTimeout(15000);
             connection.setReadTimeout(20000);
@@ -114,6 +115,21 @@ public class SmashyStreamExtractor extends MultiSourceExtractor.StreamExtractor 
     
     private List<MultiSourceExtractor.ExtractedStream> extractStreamsFromHtml(String html, String referer) {
         List<MultiSourceExtractor.ExtractedStream> streams = new ArrayList<>();
+        
+        // Look for API endpoints that might return stream URLs
+        Pattern apiPattern = Pattern.compile("(https?://[^\\s\"'<>]*(?:api|stream|source)[^\\s\"'<>]*)", Pattern.CASE_INSENSITIVE);
+        Matcher apiMatcher = apiPattern.matcher(html);
+        
+        while (apiMatcher.find()) {
+            String apiUrl = apiMatcher.group(1);
+            Bundle headers = createStreamHeaders(apiUrl, referer);
+            
+            streams.add(new MultiSourceExtractor.ExtractedStream(
+                apiUrl, "auto", "hls", headers, true
+            ));
+            
+            Log.d(TAG, "Found API stream: " + apiUrl);
+        }
         
         // Pattern for M3U8 URLs
         Pattern m3u8Pattern = Pattern.compile("(https?://[^\\s\"']+\\.m3u8(?:\\?[^\\s\"']*)?)", Pattern.CASE_INSENSITIVE);
@@ -174,11 +190,14 @@ public class SmashyStreamExtractor extends MultiSourceExtractor.StreamExtractor 
             String host = url.getHost();
             
             if (host != null && host.contains("smashystream")) {
-                headers.putString("Referer", "https://embed.smashystream.com/");
-                headers.putString("Origin", "https://embed.smashystream.com");
+                headers.putString("Referer", "https://moviesapi.club/");
+                headers.putString("Origin", "https://moviesapi.club");
+            } else if (host != null && host.contains("moviesapi")) {
+                headers.putString("Referer", "https://moviesapi.club/");
+                headers.putString("Origin", "https://moviesapi.club");
             }
         } catch (Exception e) {
-            headers.putString("Referer", "https://embed.smashystream.com/");
+            headers.putString("Referer", "https://moviesapi.club/");
         }
         
         return headers;
