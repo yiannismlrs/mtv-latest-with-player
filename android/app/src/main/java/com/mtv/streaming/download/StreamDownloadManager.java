@@ -7,7 +7,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.database.Cursor;
 import android.net.Uri;
-import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
 import android.webkit.WebView;
@@ -17,11 +16,7 @@ import android.webkit.WebResourceResponse;
 import android.os.Handler;
 import android.os.Looper;
 
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -615,18 +610,25 @@ public class StreamDownloadManager {
                     listener.onDownloadStarted(downloadInfo);
                 }
                 
+                // Make variables effectively final for lambda
+                final String finalStreamUrl = streamUrl;
+                final String finalOriginalUrl = originalUrl;
+                final String finalTitle = title;
+                
                 // Start HLS processing in background
                 CompletableFuture.runAsync(() -> {
                     try {
                         String m3u8Content;
+                        String baseUrl;
                         
                         // Check if streamUrl is already M3U8 content or a URL
-                        if (streamUrl.contains("#EXTM3U")) {
-                            m3u8Content = streamUrl;
-                            streamUrl = originalUrl; // Use original URL as base
+                        if (finalStreamUrl.contains("#EXTM3U")) {
+                            m3u8Content = finalStreamUrl;
+                            baseUrl = finalOriginalUrl; // Use original URL as base
                         } else {
                             // Fetch M3U8 content from URL
-                            m3u8Content = fetchM3U8Content(streamUrl);
+                            m3u8Content = fetchM3U8Content(finalStreamUrl);
+                            baseUrl = finalStreamUrl;
                             if (m3u8Content == null) {
                                 throw new Exception("Failed to fetch M3U8 content");
                             }
@@ -638,7 +640,7 @@ public class StreamDownloadManager {
                         headers.putString("Referer", "https://vidlink.pro/");
                         headers.putString("Origin", "https://vidlink.pro");
                         
-                        String outputPath = hlsDownloader.downloadHLS(m3u8Content, title, streamUrl, headers).get();
+                        String outputPath = hlsDownloader.downloadHLS(m3u8Content, finalTitle, baseUrl, headers).get();
                         
                         // Update download info
                         downloadInfo.status = "Completed";
