@@ -12,13 +12,15 @@ import android.content.Intent;
 import android.net.Uri;
 import android.util.Log;
 import java.util.List;
-import com.mtv.streaming.download.EmbedDownloadManager;
-import com.mtv.streaming.download.EmbedDownloadManager.DownloadInfo;
-import com.mtv.streaming.download.EmbedDownloadManager.DownloadListener;
+import com.mtv.streaming.download.StreamDownloadManager;
+import com.mtv.streaming.download.StreamDownloadManager.DownloadInfo;
+import com.mtv.streaming.download.StreamDownloadManager.DownloadListener;
+import com.mtv.streaming.download.TorrentDownloadManager;
 
-public class MainActivity extends Activity implements DownloadListener {
+public class MainActivity extends Activity implements StreamDownloadManager.DownloadListener {
     private WebView webView;
-    private EmbedDownloadManager downloadManager;
+    private StreamDownloadManager downloadManager;
+    private TorrentDownloadManager torrentManager;
     
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -100,8 +102,11 @@ public class MainActivity extends Activity implements DownloadListener {
         });
         
         // Initialize download manager
-        downloadManager = EmbedDownloadManager.getInstance(this);
+        downloadManager = StreamDownloadManager.getInstance(this);
         downloadManager.addDownloadListener(this);
+        
+        // Initialize torrent/alternative download manager
+        torrentManager = new TorrentDownloadManager(this);
         
         // Load the local web app
         webView.loadUrl("file:///android_asset/www/index.html");
@@ -217,7 +222,9 @@ public class MainActivity extends Activity implements DownloadListener {
                                 runOnUiThread(() -> {
                                     showToast("Download failed: " + throwable.getMessage());
                                     android.util.Log.e("MTV_DEBUG", "✗ Download failed: " + throwable.getMessage());
-                                });
+                                        showToast("Stream protected. Trying alternative download methods...");
+                                        // Try alternative download methods
+                                        tryAlternativeDownload(title, year, mediaType, season, episode);
                                 return null;
                             });
                     } else {
@@ -229,6 +236,30 @@ public class MainActivity extends Activity implements DownloadListener {
                     showToast("Failed to start download: " + e.getMessage());
                 }
             });
+        }
+        
+        /**
+         * Try alternative download methods when direct download fails
+         */
+        private void tryAlternativeDownload(String title, String year, String mediaType, String season, String episode) {
+            android.util.Log.d("MTV_DEBUG", "Trying alternative download for: " + title);
+            
+            torrentManager.searchForDownloads(title, year, mediaType, season, episode)
+                .thenAccept(success -> {
+                    runOnUiThread(() -> {
+                        if (success) {
+                            showToast("Opened external app for download search");
+                        } else {
+                            showToast("No download apps found. Install a torrent client or download manager.");
+                        }
+                    });
+                })
+                .exceptionally(throwable -> {
+                    runOnUiThread(() -> {
+                        showToast("Alternative download search failed");
+                    });
+                    return null;
+                });
         }
         
         @JavascriptInterface

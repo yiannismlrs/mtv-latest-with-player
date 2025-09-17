@@ -604,6 +604,7 @@ class MTVApp {
         // Use the Android download interface
         Android.downloadContent(id, type, title, year, null, null);
         console.log('Called Android download interface successfully');
+        this.showToast('Starting download analysis...');
         return;
       } catch (error) {
         console.error('Error using Android download interface:', error);
@@ -611,7 +612,7 @@ class MTVApp {
       }
     } else {
       console.log('Android download interface not available');
-      this.showToast('Download not available in this environment');
+      this.showToast('Download only available in Android app');
     }
   }
   
@@ -630,6 +631,7 @@ class MTVApp {
         // Use the Android download interface with season and episode
         Android.downloadContent(tvId, 'tv', showTitle, year, season.toString(), episode.toString());
         console.log('Called Android download interface for TV episode successfully');
+        this.showToast('Starting episode download analysis...');
         return;
       } catch (error) {
         console.error('Error using Android download interface for TV episode:', error);
@@ -637,7 +639,7 @@ class MTVApp {
       }
     } else {
       console.log('Android download interface not available');
-      this.showToast('Download not available in this environment');
+      this.showToast('Download only available in Android app');
     }
   }
   
