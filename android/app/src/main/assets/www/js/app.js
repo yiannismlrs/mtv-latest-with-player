@@ -22,6 +22,29 @@ class MTVApp {
     
     // Handle browser back button
     window.addEventListener('popstate', () => this.handleBackButton());
+    
+    // Delegated click handler for content cards
+    document.addEventListener('click', (e) => {
+      const contentCard = e.target.closest('.content-card');
+      if (contentCard) {
+        console.log('=== Content card clicked ===');
+        console.log('Card element:', contentCard);
+        const id = contentCard.dataset.id;
+        const type = contentCard.dataset.type;
+        console.log('Card data - ID:', id, 'Type:', type);
+        console.log('Current page:', this.currentPage);
+        
+        if (id && type) {
+          console.log('Opening content:', id, type);
+          e.preventDefault();
+          e.stopPropagation();
+          this.openContent(parseInt(id), type);
+        } else {
+          console.log('❌ Missing ID or type on content card');
+          console.log('Available dataset:', contentCard.dataset);
+        }
+      }
+    });
   }
 
   // Navigation History Management
@@ -63,10 +86,6 @@ class MTVApp {
         this.showWatchlist();
         this.setActiveNav(3);
         break;
-      case 'downloads':
-        this.showDownloads();
-        this.setActiveNav(4);
-        break;
       case 'search':
         this.showSearchPage();
         break;
@@ -75,15 +94,28 @@ class MTVApp {
 
   // Search Page
   showSearchPage() {
-    console.log('showSearchPage called');
-    console.log('Navigation history before:', this.navigationHistory);
-    this.pushToHistory('search');
-    console.log('Navigation history after:', this.navigationHistory);
-    const mainContent = document.querySelector('.main-content');
-    mainContent.innerHTML = `
+    console.log('=== showSearchPage called ===');
+    
+    // Set current page directly
+    this.currentPage = 'search';
+    
+    // Add to navigation history if not already there
+    if (this.navigationHistory[this.navigationHistory.length - 1] !== 'search') {
+      this.navigationHistory.push('search');
+    }
+    
+    console.log('Navigation history:', this.navigationHistory);
+    
+    const contentSections = document.getElementById('contentSections');
+    if (!contentSections) {
+      console.error('#contentSections element not found!');
+      return;
+    }
+    
+    contentSections.innerHTML = `
       <div class="search-page">
         <div class="search-header">
-          <button class="back-button" onclick="window.app.goBack(); return false;">
+          <button class="back-button" id="searchBackBtn">
             <span>← Back</span>
           </button>
           <div class="search-input-container">
@@ -111,6 +143,7 @@ class MTVApp {
   }
 
   setupSearchPageListeners() {
+    // Set up search input
     const searchInput = document.getElementById('searchPageInput');
     if (searchInput) {
       searchInput.addEventListener('input', (e) => this.handleSearchInput(e.target.value));
@@ -119,6 +152,21 @@ class MTVApp {
           this.performSearchFromPage(e.target.value.trim());
         }
       });
+    } else {
+      console.error('Search input not found!');
+    }
+    
+    // Set up back button
+    const backButton = document.getElementById('searchBackBtn');
+    if (backButton) {
+      backButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        console.log('Search back button clicked');
+        this.goBackFromSearch();
+      });
+      console.log('Search back button listener added');
+    } else {
+      console.error('Search back button not found!');
     }
   }
 
@@ -141,10 +189,19 @@ class MTVApp {
     ];
     
     const suggestionsHTML = suggestions.map(suggestion => 
-      `<div class="suggestion-item" onclick="app.performSearchFromPage('${suggestion}')">${suggestion}</div>`
+      `<div class="suggestion-item" data-suggestion="${suggestion}">${suggestion}</div>`
     ).join('');
     
     document.getElementById('searchSuggestions').innerHTML = suggestionsHTML;
+    
+    // Add click handlers for suggestions
+    document.querySelectorAll('.suggestion-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const suggestion = item.dataset.suggestion;
+        document.getElementById('searchPageInput').value = suggestion;
+        this.performSearchFromPage(suggestion);
+      });
+    });
   }
 
   async loadTopSearched() {
@@ -235,11 +292,23 @@ class MTVApp {
   }
 
   renderSearchPageResults(query, results) {
-    console.log('Rendering search results:', results);
+    console.log('=== Rendering search results ===');
+    console.log('Search query:', query);
+    console.log('Results:', results);
     
     const allResults = [...(results.movies || []), ...(results.tv || [])];
     
     console.log('Total results:', allResults.length);
+    console.log('First few results:', allResults.slice(0, 3));
+    
+    // Generate content cards with debugging
+    const contentCards = allResults.map(item => {
+      const type = item.title ? 'movie' : 'tv';
+      console.log(`Generating card for: ${item.title || item.name} (ID: ${item.id}, Type: ${type})`);
+      return this.renderContentCard(item, type);
+    });
+    
+    console.log('Generated', contentCards.length, 'content cards');
     
     document.getElementById('searchResults').innerHTML = `
       <div class="content-section">
@@ -249,10 +318,7 @@ class MTVApp {
         </div>
         ${allResults.length > 0 ? `
           <div class="content-grid">
-            ${allResults.map(item => {
-              const type = item.title ? 'movie' : 'tv';
-              return this.renderContentCard(item, type);
-            }).join('')}
+            ${contentCards.join('')}
           </div>
         ` : `
           <div style="text-align: center; padding: 3rem;">
@@ -263,6 +329,15 @@ class MTVApp {
         `}
       </div>
     `;
+    
+    // Verify that content cards were added to DOM
+    const addedCards = document.querySelectorAll('.content-card');
+    console.log('Content cards in DOM after rendering:', addedCards.length);
+    
+    // Check if cards have proper data attributes
+    addedCards.forEach((card, index) => {
+      console.log(`Card ${index}: ID=${card.dataset.id}, Type=${card.dataset.type}`);
+    });
   }
 
   async loadHomePage() {
@@ -327,8 +402,9 @@ class MTVApp {
     const rating = item.vote_average ? item.vote_average.toFixed(1) : 'N/A';
     const posterUrl = item.poster_path ? apiService.getImageUrl(item.poster_path) : '';
 
+    // Use data attributes and a delegated click handler to ensure clicks work reliably
     return `
-      <div class="content-card" onclick="app.openContent(${item.id}, '${type}')">
+      <div class="content-card" data-id="${item.id}" data-type="${type}">
         <div class="card-poster" style="background-image: url('${posterUrl}')"></div>
         <div class="card-content">
           <div class="card-title">${title}</div>
@@ -743,6 +819,7 @@ class MTVApp {
     
     if (isInWatchlist) {
       storageService.removeFromWatchlist(id, type);
+      this.showToast('Removed from watchlist');
     } else {
       storageService.addToWatchlist({
         id,
@@ -750,6 +827,7 @@ class MTVApp {
         title,
         poster_path: posterUrl.replace(apiService.imageBaseUrl, '')
       });
+      this.showToast('Added to watchlist');
     }
     
     // Update local reference
@@ -758,11 +836,23 @@ class MTVApp {
     // Refresh the current view if it's content details
     if (document.querySelector('.content-detail')) {
       this.openContent(id, type);
+    } else if (this.currentPage === 'watchlist') {
+      // If we're on the watchlist page, refresh it
+      this.showWatchlist();
     }
   }
 
   async showMovies() {
-    this.navigateToPage('movies');
+    console.log('=== showMovies called ===');
+    this.currentPage = 'movies';
+    this.setActiveNav(1);
+    
+    // Add to navigation history if not already there
+    if (this.navigationHistory[this.navigationHistory.length - 1] !== 'movies') {
+      this.navigationHistory.push('movies');
+    }
+    
+    this.showMoviesWithTabs();
   }
 
   async showMoviesWithTabs() {
@@ -791,7 +881,16 @@ class MTVApp {
   }
 
   async showTVShows() {
-    this.navigateToPage('tv');
+    console.log('=== showTVShows called ===');
+    this.currentPage = 'tv';
+    this.setActiveNav(2);
+    
+    // Add to navigation history if not already there
+    if (this.navigationHistory[this.navigationHistory.length - 1] !== 'tv') {
+      this.navigationHistory.push('tv');
+    }
+    
+    this.showTVWithTabs();
   }
 
   async showTVWithTabs() {
@@ -820,178 +919,49 @@ class MTVApp {
   }
 
   showWatchlist() {
-    this.navigateToPage('watchlist');
-    this.watchlist = storageService.getWatchlist();
-    this.renderCategoryPage('📋 My Watchlist', this.watchlist, null);
-  }
-  
-  showDownloads() {
-    this.navigateToPage('downloads');
-    this.renderDownloadsPage();
-  }
-  
-  renderDownloadsPage() {
-    const contentSections = document.getElementById('contentSections');
-    
-    contentSections.innerHTML = `
-      <div class="downloads-page">
-        <div class="content-section">
-          <div class="section-header">
-            <h2 class="section-title">💾 Downloads</h2>
-            <button onclick="app.refreshDownloads()" style="background: var(--primary-orange); color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.85rem; cursor: pointer;">
-              🔄 Refresh
-            </button>
-          </div>
-          
-          <!-- Active Downloads -->
-          <div id="activeDownloads" class="downloads-section">
-            <h3 style="color: var(--text-primary); margin-bottom: 1rem; font-size: 1.1rem;">🔄 Active Downloads</h3>
-            <div id="activeDownloadsList"></div>
-          </div>
-          
-          <!-- Completed Downloads -->
-          <div id="completedDownloads" class="downloads-section" style="margin-top: 2rem;">
-            <h3 style="color: var(--text-primary); margin-bottom: 1rem; font-size: 1.1rem;">✓ Completed Downloads</h3>
-            <div id="completedDownloadsList"></div>
-          </div>
-        </div>
-      </div>
-    `;
-    
-    this.loadDownloads();
-  }
-  
-  loadDownloads() {
-    if (typeof Android === 'undefined') {
-      document.getElementById('activeDownloadsList').innerHTML = 
-        '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Downloads only available in Android app</p>';
-      document.getElementById('completedDownloadsList').innerHTML = 
-        '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Downloads only available in Android app</p>';
-      return;
-    }
-    
+    console.log('=== showWatchlist called ===');
     try {
-      // Load active downloads
-      const activeDownloadsJson = Android.getActiveDownloads();
-      const activeDownloads = JSON.parse(activeDownloadsJson);
-      this.renderActiveDownloads(activeDownloads);
+      // Set current page directly
+      this.currentPage = 'watchlist';
+      this.setActiveNav(3);
       
-      // Load completed downloads
-      const completedDownloadsJson = Android.getCompletedDownloads();
-      const completedDownloads = JSON.parse(completedDownloadsJson);
-      this.renderCompletedDownloads(completedDownloads);
+      // Load watchlist data
+      this.watchlist = storageService.getWatchlist();
+      console.log('Watchlist items loaded:', this.watchlist.length);
+      console.log('Watchlist data:', this.watchlist);
       
+      // Add to navigation history if not already there
+      if (this.navigationHistory[this.navigationHistory.length - 1] !== 'watchlist') {
+        this.navigationHistory.push('watchlist');
+      }
+      
+      if (this.watchlist.length === 0) {
+        console.log('Rendering empty watchlist');
+        this.renderEmptyWatchlist();
+      } else {
+        console.log('Rendering watchlist with items');
+        this.renderCategoryPage('📋 My Watchlist', this.watchlist, null);
+      }
     } catch (error) {
-      console.error('Error loading downloads:', error);
-      document.getElementById('activeDownloadsList').innerHTML = 
-        '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Error loading downloads</p>';
-      document.getElementById('completedDownloadsList').innerHTML = 
-        '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Error loading downloads</p>';
+      console.error('Error in showWatchlist:', error);
+      this.showError('Failed to load watchlist: ' + error.message);
     }
   }
   
-  renderActiveDownloads(downloads) {
-    const container = document.getElementById('activeDownloadsList');
-    
-    if (downloads.length === 0) {
-      container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">No active downloads</p>';
-      return;
-    }
-    
-    container.innerHTML = downloads.map(download => `
-      <div class="download-item active" data-download-id="${download.id}">
-        <div class="download-info">
-          <h4 class="download-title">${download.title}${download.season ? ` S${download.season}E${download.episode}` : ''}</h4>
-          <p class="download-filename">${download.filename}</p>
-          <div class="download-progress">
-            <div class="progress-bar">
-              <div class="progress-fill" style="width: ${download.progress}%"></div>
-            </div>
-            <span class="progress-text">${download.progress}% - ${download.status}</span>
-          </div>
-        </div>
-        <div class="download-actions">
-          <button onclick="app.cancelDownload('${download.id}')" class="cancel-btn">❌ Cancel</button>
-        </div>
-      </div>
-    `).join('');
-  }
-  
-  renderCompletedDownloads(downloads) {
-    const container = document.getElementById('completedDownloadsList');
-    
-    if (downloads.length === 0) {
-      container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">No completed downloads</p>';
-      return;
-    }
-    
-    container.innerHTML = downloads.map(download => `
-      <div class="download-item completed">
-        <div class="download-info">
-          <h4 class="download-title">${download.title}${download.season ? ` S${download.season}E${download.episode}` : ''}</h4>
-          <p class="download-filename">${download.filename}</p>
-          <p class="download-status">✓ Download complete</p>
-        </div>
-        <div class="download-actions">
-          <button onclick="app.playDownloadedFile('${download.filePath}')" class="play-btn">▶️ Play</button>
-        </div>
-      </div>
-    `).join('');
-  }
-  
-  refreshDownloads() {
-    this.loadDownloads();
-  }
-  
-  cancelDownload(downloadId) {
-    if (typeof Android !== 'undefined' && typeof Android.cancelDownload === 'function') {
-      Android.cancelDownload(downloadId);
-      // Refresh after a short delay
-      setTimeout(() => this.loadDownloads(), 1000);
-    }
-  }
-  
-  playDownloadedFile(filePath) {
-    if (typeof Android !== 'undefined' && typeof Android.playDownloadedFile === 'function') {
-      Android.playDownloadedFile(filePath);
-    }
-  }
-  
-  // Download event callbacks from Android
+  // Download event callbacks from Android (keep for download buttons in content details)
   onDownloadStarted(downloadId) {
     console.log('Download started:', downloadId);
-    if (this.currentPage === 'downloads') {
-      this.loadDownloads();
-    }
-  }
-  
-  onDownloadProgress(downloadId, progress) {
-    // Update progress bar if downloads page is active
-    if (this.currentPage === 'downloads') {
-      const downloadItem = document.querySelector(`[data-download-id="${downloadId}"]`);
-      if (downloadItem) {
-        const progressFill = downloadItem.querySelector('.progress-fill');
-        const progressText = downloadItem.querySelector('.progress-text');
-        if (progressFill) progressFill.style.width = progress + '%';
-        if (progressText) progressText.textContent = progress + '% - Downloading';
-      }
-    }
+    this.showToast('Download started!');
   }
   
   onDownloadCompleted(downloadId, filePath) {
     console.log('Download completed:', downloadId, filePath);
     this.showToast('Download completed!');
-    if (this.currentPage === 'downloads') {
-      setTimeout(() => this.loadDownloads(), 1000);
-    }
   }
   
   onDownloadFailed(downloadId, error) {
     console.log('Download failed:', downloadId, error);
     this.showToast('Download failed: ' + error);
-    if (this.currentPage === 'downloads') {
-      setTimeout(() => this.loadDownloads(), 1000);
-    }
   }
 
   renderMoviesWithTabs() {
@@ -1062,6 +1032,30 @@ class MTVApp {
     this.renderTVWithTabs();
   }
 
+  renderEmptyWatchlist() {
+    const contentSections = document.getElementById('contentSections');
+    contentSections.innerHTML = `
+      <div class="content-section">
+        <div class="section-header">
+          <h2 class="section-title">📋 My Watchlist</h2>
+        </div>
+        <div style="text-align: center; padding: 3rem 1rem;">
+          <div style="font-size: 4rem; margin-bottom: 1rem; opacity: 0.5;">📋</div>
+          <h3 style="color: var(--text-primary); margin-bottom: 1rem;">Your Watchlist is Empty</h3>
+          <p style="color: var(--text-secondary); margin-bottom: 2rem; max-width: 300px; margin-left: auto; margin-right: auto;">Browse movies and TV shows to add them to your watchlist!</p>
+          <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+            <button onclick="app.showMovies()" style="background: var(--primary-orange); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 8px; cursor: pointer; font-weight: bold;">
+              🎬 Browse Movies
+            </button>
+            <button onclick="app.showTVShows()" style="background: var(--card-bg); color: var(--text-primary); border: 1px solid var(--border-color); padding: 0.75rem 1.5rem; border-radius: 8px; cursor: pointer; font-weight: bold;">
+              📺 Browse TV Shows
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  
   renderCategoryPage(title, items, type) {
     const contentSections = document.getElementById('contentSections');
     contentSections.innerHTML = `
@@ -1082,7 +1076,16 @@ class MTVApp {
   }
 
   showHome() {
-    this.navigateToPage('home');
+    console.log('=== showHome called ===');
+    this.currentPage = 'home';
+    this.setActiveNav(0);
+    
+    // Add to navigation history if not already there
+    if (this.navigationHistory[this.navigationHistory.length - 1] !== 'home') {
+      this.navigationHistory.push('home');
+    }
+    
+    this.loadHomePage();
   }
 
   setActiveNav(index) {
@@ -1092,18 +1095,45 @@ class MTVApp {
     });
   }
 
+  goBackFromSearch() {
+    console.log('=== goBackFromSearch called ===');
+    console.log('Current navigation history before:', this.navigationHistory);
+    
+    // Remove search from history if it's there
+    if (this.navigationHistory[this.navigationHistory.length - 1] === 'search') {
+      this.navigationHistory.pop();
+    }
+    
+    // Go to previous page or home if no previous page
+    const previousPage = this.navigationHistory.length > 0 
+      ? this.navigationHistory[this.navigationHistory.length - 1] 
+      : 'home';
+    
+    console.log('Going back to:', previousPage);
+    console.log('Navigation history after pop:', this.navigationHistory);
+    
+    // Use the existing navigation system for consistency
+    this.navigateToPage(previousPage, false);
+  }
+  
   goBack() {
     console.log('goBack called');
     console.log('Current navigation history:', this.navigationHistory);
     console.log('Current page:', this.currentPage);
     
     if (this.navigationHistory.length > 1) {
-      this.navigationHistory.pop(); // Remove current page
+      // Remove current page from history
+      this.navigationHistory.pop();
       const previousPage = this.navigationHistory[this.navigationHistory.length - 1];
       console.log('Navigating back to:', previousPage);
+      
+      // Navigate without adding to history
+      this.currentPage = previousPage;
       this.navigateToPage(previousPage, false);
     } else {
       console.log('No previous page, going to home');
+      this.navigationHistory = ['home'];
+      this.currentPage = 'home';
       this.navigateToPage('home', false);
     }
   }
@@ -1126,17 +1156,60 @@ class MTVApp {
 }
 
 // Global functions for onclick handlers
-function showHome() { app.showHome(); }
-function showMovies() { app.showMovies(); }
-function showTVShows() { app.showTVShows(); }
-function showWatchlist() { app.showWatchlist(); }
-function showDownloads() { app.showDownloads(); }
-function exploreContent() { app.showMovies(); }
+function showHome() { 
+  console.log('showHome called');
+  if (window.app) app.showHome(); 
+}
+function showMovies() { 
+  console.log('showMovies called');
+  if (window.app) app.showMovies(); 
+}
+function showTVShows() { 
+  console.log('showTVShows called');
+  if (window.app) app.showTVShows(); 
+}
+function showWatchlist() { 
+  console.log('showWatchlist called');
+  if (window.app) app.showWatchlist(); 
+}
+function showSearch() {
+  console.log('showSearch called');
+  if (window.app) app.navigateToPage('search');
+}
+function exploreContent() { 
+  if (window.app) app.showMovies(); 
+}
+// searchGoBack function removed - using direct event listeners now
 
 // Initialize app when DOM is loaded
 let app;
-document.addEventListener('DOMContentLoaded', () => {
-  app = new MTVApp();
-  window.app = app; // Make app available globally
-  console.log('App initialized and available globally');
-});
+
+// Ensure we have a proper initialization
+function initializeApp() {
+  try {
+    console.log('Initializing MTV App...');
+    app = new MTVApp();
+    window.app = app; // Make app available globally
+    window.mtvApp = app; // Alternative reference
+    console.log('App initialized and available globally');
+    console.log('App object:', app);
+  } catch (error) {
+    console.error('Failed to initialize app:', error);
+  }
+}
+
+// Multiple initialization triggers to ensure it works
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeApp);
+} else {
+  // DOM is already loaded
+  initializeApp();
+}
+
+// Fallback initialization after a short delay
+setTimeout(() => {
+  if (!window.app) {
+    console.log('Fallback app initialization');
+    initializeApp();
+  }
+}, 100);

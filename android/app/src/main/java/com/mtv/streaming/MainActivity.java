@@ -212,6 +212,8 @@ public class MainActivity extends Activity implements StreamDownloadManager.Down
                                 runOnUiThread(() -> {
                                     if (downloadInfo.status.equals("Processing HLS")) {
                                         showToast("Processing video segments...");
+                                    } else if (downloadInfo.status.equals("Ready for SPlayer")) {
+                                        showToast("SPlayer playlist ready! Check Downloads tab.");
                                     } else {
                                         showToast("Download started: " + downloadInfo.filename);
                                     }
@@ -221,9 +223,30 @@ public class MainActivity extends Activity implements StreamDownloadManager.Down
                             .exceptionally(throwable -> {
                                 runOnUiThread(() -> {
                                     android.util.Log.e("MTV_DEBUG", "✗ Download failed: " + throwable.getMessage());
-                                    showToast("Download failed. Opening alternative options...");
-                                    // Try alternative download methods
-                                    tryAlternativeDownload(title, year, mediaType, season, episode);
+                                    String errorMsg = throwable.getMessage();
+                                    
+                                    if (errorMsg.contains("HLS processing failed")) {
+                                        showToast("Creating SPlayer-compatible playlist instead...");
+                                        // Try alternative download methods
+                                        tryAlternativeDownload(title, year, mediaType, season, episode);
+                                    } else if (errorMsg.contains("failed to fetch m3u8")) {
+                                        showToast("Stream protected. Trying alternative sources...");
+                                        tryAlternativeDownload(title, year, mediaType, season, episode);
+                                    } else if (errorMsg.contains("geo-blocked") || errorMsg.contains("GEO_BLOCKED")) {
+                                        showToast("Content blocked in your region. Check Downloads tab for VPN guidance.");
+                                        // The StreamDownloadManager will create instructions automatically
+                                    } else if (errorMsg.contains("rate limit") || errorMsg.contains("RATE_LIMITED")) {
+                                        showToast("Too many requests. Please wait a few minutes and try again.");
+                                    } else if (errorMsg.contains("CAPTCHA") || errorMsg.contains("captcha")) {
+                                        showToast("Site requires verification. Trying alternative sources...");
+                                        tryAlternativeDownload(title, year, mediaType, season, episode);
+                                    } else if (errorMsg.contains("All download methods failed")) {
+                                        showToast("All sources failed. Download instructions created - check Downloads tab.");
+                                    } else {
+                                        showToast("Download failed: " + errorMsg.substring(0, Math.min(50, errorMsg.length())) + "...");
+                                        // Still try alternatives
+                                        tryAlternativeDownload(title, year, mediaType, season, episode);
+                                    }
                                 });
                                 return null;
                             });
@@ -335,14 +358,74 @@ public class MainActivity extends Activity implements StreamDownloadManager.Down
         @JavascriptInterface
         public void playDownloadedFile(String filePath) {
             try {
-                Intent intent = new Intent(Intent.ACTION_VIEW);
-                intent.setDataAndType(Uri.parse("file://" + filePath), "video/*");
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                startActivity(intent);
+                android.util.Log.d("MTV_DEBUG", "Playing downloaded file: " + filePath);
+                
+                // Check if it's an M3U8 playlist file
+                if (filePath.toLowerCase().endsWith(".m3u8")) {
+                    android.util.Log.d("MTV_DEBUG", "M3U8 playlist detected, launching SPlayer");
+                    launchSPlayerWithFile(filePath);
+                } else {
+                    // Regular video file - use system default player
+                    Intent intent = new Intent(Intent.ACTION_VIEW);
+                    intent.setDataAndType(Uri.parse("file://" + filePath), "video/*");
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivity(intent);
+                }
             } catch (Exception e) {
                 android.util.Log.e("MTV_DEBUG", "Failed to play downloaded file: " + e.getMessage());
                 showToast("Failed to open video file");
+            }
+        }
+        
+        /**
+         * Launch SPlayer with downloaded M3U8 file
+         */
+        private void launchSPlayerWithFile(String m3u8FilePath) {
+            try {
+                // Try SPlayer first
+                if (SPlayerUtil.isSPlayerInstalled(MainActivity.this)) {
+                    android.util.Log.d("MTV_DEBUG", "Launching SPlayer with M3U8 file");
+                    
+                    Intent splayer = new Intent(Intent.ACTION_VIEW);
+                    splayer.setPackage("com.ttee.leeplayer"); // SPlayer package
+                    splayer.setDataAndType(Uri.parse("file://" + m3u8FilePath), "application/vnd.apple.mpegurl");
+                    splayer.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    splayer.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    
+                    startActivity(splayer);
+                    showToast("Opening HLS playlist in SPlayer...");
+                    
+                    android.util.Log.d("MTV_DEBUG", "✓ SPlayer launched with M3U8 playlist");
+                } else {
+                    // SPlayer not installed - try other players
+                    android.util.Log.d("MTV_DEBUG", "SPlayer not installed, trying other players");
+                    
+                    Intent intent = new Intent(Intent.ACTION_VIEW);
+                    intent.setDataAndType(Uri.parse("file://" + m3u8FilePath), "application/vnd.apple.mpegurl");
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    
+                    // Create chooser to let user pick player
+                    Intent chooser = Intent.createChooser(intent, "Open HLS Playlist with:");
+                    chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    
+                    startActivity(chooser);
+                    showToast("Choose a video player that supports HLS (M3U8) files");
+                }
+            } catch (Exception e) {
+                android.util.Log.e("MTV_DEBUG", "Failed to launch SPlayer: " + e.getMessage());
+                
+                // Final fallback - generic video intent
+                try {
+                    Intent fallback = new Intent(Intent.ACTION_VIEW);
+                    fallback.setDataAndType(Uri.parse("file://" + m3u8FilePath), "video/*");
+                    fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(fallback);
+                    showToast("Opening with default video player...");
+                } catch (Exception fallbackError) {
+                    showToast("No compatible video player found");
+                }
             }
         }
         

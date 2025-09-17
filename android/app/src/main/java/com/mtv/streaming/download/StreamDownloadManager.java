@@ -42,6 +42,7 @@ public class StreamDownloadManager {
     private final Map<Long, DownloadInfo> activeDownloads;
     private final List<DownloadListener> listeners;
     private final Handler mainHandler;
+    private final AccessRestrictionHandler restrictionHandler;
     
     public interface DownloadListener {
         void onDownloadStarted(DownloadInfo download);
@@ -84,6 +85,7 @@ public class StreamDownloadManager {
         this.activeDownloads = new HashMap<>();
         this.listeners = new ArrayList<>();
         this.mainHandler = new Handler(Looper.getMainLooper());
+        this.restrictionHandler = new AccessRestrictionHandler(this.context);
         
         // Register download completion receiver
         IntentFilter filter = new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE);
@@ -246,7 +248,7 @@ public class StreamDownloadManager {
         }
         
         // CDN patterns
-        if (lower.matches(".*\\.(mp4|m3u8|mkv|avi|webm)\\?.*")) {
+        if (lower.matches(".*\\\\.(mp4|m3u8|mkv|avi|webm)\\\\?.*")) {
             return true;
         }
         
@@ -348,15 +350,34 @@ public class StreamDownloadManager {
     }
     
     /**
-     * Try alternative download methods when direct extraction fails
+     * Try alternative download methods when direct extraction fails (OnStream-style)
      */
     private CompletableFuture<DownloadInfo> tryAlternativeDownloadMethods(String embedUrl, String title, String type, String season, String episode) {
-        Log.d(TAG, "🔄 Trying alternative download methods...");
+        Log.d(TAG, "🔄 Trying OnStream-style alternative download methods...");
         
         CompletableFuture<DownloadInfo> future = new CompletableFuture<>();
         
         CompletableFuture.runAsync(() -> {
             try {
+                // First check if original URL has access restrictions
+                restrictionHandler.detectRestrictions(embedUrl)
+                    .thenAccept(restrictionInfo -> {
+                        if (restrictionInfo.type != null) {
+                            Log.d(TAG, "🚫 Restriction detected: " + restrictionInfo.type + " - " + restrictionInfo.message);
+                            Log.d(TAG, "💡 Suggestion: " + restrictionInfo.suggestedAction);
+                            
+                            // Notify user about the restriction
+                            for (DownloadListener listener : listeners) {
+                                DownloadInfo restrictionDownload = new DownloadInfo(-3, title, embedUrl, embedUrl, 
+                                    "restriction_detected.txt", type, season, episode);
+                                restrictionDownload.status = "Restricted: " + restrictionInfo.type.toString();
+                                listener.onDownloadFailed(restrictionDownload, 
+                                    restrictionInfo.message + "\n\n" + restrictionHandler.getRestrictionGuidance(restrictionInfo.type));
+                            }
+                        }
+                    })
+                    .join(); // Wait for restriction check
+                
                 // Method 1: Try known working stream URLs based on TMDB ID
                 String tmdbId = extractTmdbId(embedUrl);
                 if (tmdbId != null) {
@@ -366,37 +387,78 @@ public class StreamDownloadManager {
                     
                     for (String altUrl : alternativeUrls) {
                         try {
-                            Log.d(TAG, "🔗 Trying alternative URL: " + altUrl);
+                            Log.d(TAG, "🔗 Testing alternative source: " + altUrl.substring(0, Math.min(50, altUrl.length())) + "...");
+                            
+                            // Check if this alternative source is accessible
+                            AccessRestrictionHandler.RestrictionInfo altRestriction = 
+                                restrictionHandler.detectRestrictions(altUrl).get();
+                            
+                            if (altRestriction.type != null) {
+                                Log.d(TAG, "⚠️ Alternative also restricted: " + altRestriction.type);
+                                continue; // Try next alternative
+                            }
+                            
+                            Log.d(TAG, "✓ Alternative source accessible, starting download...");
                             
                             DownloadInfo downloadInfo = startDirectDownload(altUrl, title, type, season, episode, embedUrl).get();
                             
                             // Test if download actually starts
-                            Thread.sleep(2000); // Wait 2 seconds
+                            Thread.sleep(3000); // Wait 3 seconds for download to initialize
                             updateDownloadProgress();
                             
-                            if (downloadInfo.progress > 0 || "Downloading".equals(downloadInfo.status)) {
-                                Log.d(TAG, "✓ Alternative URL working: " + altUrl);
+                            if (downloadInfo.progress > 0 || "Downloading".equals(downloadInfo.status) || "Processing HLS".equals(downloadInfo.status)) {
+                                Log.d(TAG, "✓ Alternative URL working: " + altUrl.substring(0, Math.min(50, altUrl.length())));
                                 future.complete(downloadInfo);
                                 return;
                             } else {
                                 // Cancel this attempt and try next
-                                downloadManager.remove(downloadInfo.downloadId);
-                                activeDownloads.remove(downloadInfo.downloadId);
+                                if (downloadInfo.downloadId > 0) {
+                                    downloadManager.remove(downloadInfo.downloadId);
+                                    activeDownloads.remove(downloadInfo.downloadId);
+                                }
+                                Log.d(TAG, "❌ Alternative not working, trying next...");
                             }
                             
                         } catch (Exception e) {
-                            Log.w(TAG, "Alternative URL failed: " + altUrl + " - " + e.getMessage());
+                            Log.w(TAG, "Alternative URL failed: " + e.getMessage());
                         }
                     }
                 }
                 
-                // Method 2: Use external downloader approach
-                DownloadInfo result = useExternalDownloaderApproach(embedUrl, title, type, season, episode).get();
+                // Method 2: Try external downloader integration
+                Log.d(TAG, "🔧 Trying external downloader integration...");
+                boolean externalSuccess = restrictionHandler.openExternalDownloader(embedUrl);
+                
+                if (externalSuccess) {
+                    // Create a pseudo download info for external downloader
+                    DownloadInfo externalDownloadInfo = new DownloadInfo(-4, title, embedUrl, embedUrl, 
+                        "external_download.txt", type, season, episode);
+                    externalDownloadInfo.status = "Redirected to External Downloader";
+                    externalDownloadInfo.progress = 0;
+                    
+                    for (DownloadListener listener : listeners) {
+                        listener.onDownloadCompleted(externalDownloadInfo, "External downloader opened");
+                    }
+                    
+                    future.complete(externalDownloadInfo);
+                    return;
+                }
+                
+                // Method 3: Provide user guidance for manual download
+                Log.d(TAG, "📝 Creating download instructions for user...");
+                DownloadInfo result = createDownloadInstructions(embedUrl, title, type, season, episode).get();
                 future.complete(result);
                 
             } catch (Exception e) {
                 Log.e(TAG, "All alternative methods failed: " + e.getMessage());
-                future.completeExceptionally(new RuntimeException("All download methods failed: " + e.getMessage()));
+                
+                // Final fallback - create instruction file
+                try {
+                    DownloadInfo instructionInfo = createDownloadInstructions(embedUrl, title, type, season, episode).get();
+                    future.complete(instructionInfo);
+                } catch (Exception finalException) {
+                    future.completeExceptionally(new RuntimeException("All download methods failed: " + e.getMessage()));
+                }
             }
         });
         
@@ -429,77 +491,189 @@ public class StreamDownloadManager {
     }
     
     /**
-     * Build alternative stream URLs using known working patterns
+     * Build alternative stream URLs using known working patterns (OnStream-style)
      */
     private String[] buildAlternativeStreamUrls(String tmdbId, String type, String season, String episode) {
         List<String> urls = new ArrayList<>();
         
         if ("movie".equals(type)) {
-            // Movie alternatives
+            // Movie alternatives - ordered by reliability
             urls.add("https://vidsrc.to/embed/movie/" + tmdbId);
+            urls.add("https://vidsrc.cc/v2/embed/movie/" + tmdbId);
             urls.add("https://vidsrc.me/embed/movie/" + tmdbId);
             urls.add("https://2embed.to/embed/tmdb/movie?id=" + tmdbId);
-            urls.add("https://multiembed.mov/directstream.php?video_id=" + tmdbId + "&tmdb=1");
             urls.add("https://www.2embed.cc/embed/tmdb/movie?id=" + tmdbId);
+            urls.add("https://multiembed.mov/directstream.php?video_id=" + tmdbId + "&tmdb=1");
+            urls.add("https://embed.su/embed/movie/" + tmdbId);
+            urls.add("https://autoembed.to/movie/tmdb/" + tmdbId);
+            urls.add("https://player.smashy.stream/movie/" + tmdbId);
+            
+            // Backup sources with different formats
+            urls.add("https://superembed.stream/movie/" + tmdbId);
+            urls.add("https://embedder.net/e/movie?tmdb=" + tmdbId);
+            
         } else {
-            // TV show alternatives
+            // TV show alternatives - ordered by reliability
             String s = season != null ? season : "1";
             String e = episode != null ? episode : "1";
             
             urls.add("https://vidsrc.to/embed/tv/" + tmdbId + "/" + s + "/" + e);
+            urls.add("https://vidsrc.cc/v2/embed/tv/" + tmdbId + "/" + s + "/" + e);
             urls.add("https://vidsrc.me/embed/tv/" + tmdbId + "/" + s + "/" + e);
             urls.add("https://2embed.to/embed/tmdb/tv?id=" + tmdbId + "&s=" + s + "&e=" + e);
-            urls.add("https://multiembed.mov/directstream.php?video_id=" + tmdbId + "&tmdb=1&s=" + s + "&e=" + e);
             urls.add("https://www.2embed.cc/embed/tmdb/tv?id=" + tmdbId + "&s=" + s + "&e=" + e);
+            urls.add("https://multiembed.mov/directstream.php?video_id=" + tmdbId + "&tmdb=1&s=" + s + "&e=" + e);
+            urls.add("https://embed.su/embed/tv/" + tmdbId + "/" + s + "/" + e);
+            urls.add("https://autoembed.to/tv/tmdb/" + tmdbId + "-" + s + "-" + e);
+            urls.add("https://player.smashy.stream/tv/" + tmdbId + "/" + s + "/" + e);
+            
+            // Backup sources with different formats
+            urls.add("https://superembed.stream/tv/" + tmdbId + "/" + s + "/" + e);
+            urls.add("https://embedder.net/e/tv?tmdb=" + tmdbId + "&season=" + s + "&episode=" + e);
+        }
+        
+        // Add region-specific mirrors as fallback
+        if ("movie".equals(type)) {
+            urls.add("https://streamm4u.ws/movie/" + tmdbId);
+            urls.add("https://movies7.to/movie/" + tmdbId);
+        } else {
+            String s = season != null ? season : "1";
+            String e = episode != null ? episode : "1";
+            urls.add("https://streamm4u.ws/tv/" + tmdbId + "-" + s + "-" + e);
+            urls.add("https://movies7.to/tv/" + tmdbId + "-" + s + "-" + e);
         }
         
         return urls.toArray(new String[0]);
     }
     
     /**
-     * Use external downloader approach - create a downloadable link
+     * Create comprehensive download instructions when all methods fail
      */
-    private CompletableFuture<DownloadInfo> useExternalDownloaderApproach(String embedUrl, String title, String type, String season, String episode) {
-        Log.d(TAG, "🔧 Using external downloader approach...");
+    private CompletableFuture<DownloadInfo> createDownloadInstructions(String embedUrl, String title, String type, String season, String episode) {
+        Log.d(TAG, "📝 Creating comprehensive download instructions...");
         
         return CompletableFuture.supplyAsync(() -> {
             try {
-                // Create a special download URL that includes instructions
-                String filename = generateFilename(title, type, season, episode);
-                String instructionUrl = createInstructionUrl(embedUrl, title, filename);
+                String filename = title.replaceAll("[^a-zA-Z0-9\\s\\-]", "").trim().replaceAll("\\s+", "_") + "_instructions.txt";
+                String tmdbId = extractTmdbId(embedUrl);
                 
-                Log.d(TAG, "📝 Created instruction URL: " + instructionUrl);
+                // Create comprehensive instructions
+                StringBuilder instructions = new StringBuilder();
+                instructions.append("MTV App - Download Instructions\n");
+                instructions.append("=====================================\n\n");
+                instructions.append("Content: ").append(title).append("\n");
+                instructions.append("Type: ").append(type.toUpperCase()).append("\n");
+                if ("tv".equals(type) && season != null && episode != null) {
+                    instructions.append("Season: ").append(season).append(", Episode: ").append(episode).append("\n");
+                }
+                if (tmdbId != null) {
+                    instructions.append("TMDB ID: ").append(tmdbId).append("\n");
+                }
+                instructions.append("Original URL: ").append(embedUrl).append("\n\n");
                 
-                // Start download with instruction URL
-                return startDirectDownload(instructionUrl, title, type, season, episode, embedUrl).get();
+                instructions.append("DOWNLOAD OPTIONS:\n");
+                instructions.append("================\n\n");
+                
+                instructions.append("Option 1 - Alternative Streaming Sources:\n");
+                if (tmdbId != null) {
+                    String[] alternatives = buildAlternativeStreamUrls(tmdbId, type, season, episode);
+                    for (int i = 0; i < Math.min(5, alternatives.length); i++) {
+                        instructions.append("  ").append(i + 1).append(". ").append(alternatives[i]).append("\n");
+                    }
+                }
+                instructions.append("\n");
+                
+                instructions.append("Option 2 - External Download Managers:\n");
+                instructions.append("  • ADM (Advanced Download Manager)\n");
+                instructions.append("  • IDM+ (Internet Download Manager)\n");
+                instructions.append("  • Turbo Download Manager\n");
+                instructions.append("  Install from Google Play Store\n\n");
+                
+                instructions.append("Option 3 - VPN for Geo-Restrictions:\n");
+                instructions.append("  • NordVPN (Recommended)\n");
+                instructions.append("  • ExpressVPN\n");
+                instructions.append("  • Free VPN apps from Play Store\n\n");
+                
+                instructions.append("Option 4 - Browser Extensions:\n");
+                instructions.append("  • Video DownloadHelper\n");
+                instructions.append("  • Flash Video Downloader\n");
+                instructions.append("  • Stream Recorder\n\n");
+                
+                instructions.append("MANUAL STEPS:\n");
+                instructions.append("=============\n");
+                instructions.append("1. Open one of the alternative URLs in Chrome\n");
+                instructions.append("2. Play the video and right-click > 'Save video as'\n");
+                instructions.append("3. Or use browser developer tools (F12) to find video URL\n");
+                instructions.append("4. If geo-blocked, enable VPN first\n\n");
+                
+                instructions.append("TROUBLESHOOTING:\n");
+                instructions.append("================\n");
+                instructions.append("• If sites are blocked: Use VPN or mobile data\n");
+                instructions.append("• If captcha required: Complete manually in browser\n");
+                instructions.append("• If no video found: Try different sources above\n");
+                instructions.append("• For TV shows: Verify season/episode numbers\n\n");
+                
+                instructions.append("Generated by MTV App on: ").append(new java.util.Date().toString()).append("\n");
+                
+                // Save instructions to file
+                File downloadsDir = new File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "MTV_Instructions");
+                if (!downloadsDir.exists()) {
+                    downloadsDir.mkdirs();
+                }
+                
+                File instructionsFile = new File(downloadsDir, filename);
+                java.io.FileWriter writer = new java.io.FileWriter(instructionsFile);
+                writer.write(instructions.toString());
+                writer.close();
+                
+                // Create download info
+                DownloadInfo downloadInfo = new DownloadInfo(-5, title, embedUrl, embedUrl, 
+                    filename, type, season, episode);
+                downloadInfo.status = "Instructions Created";
+                downloadInfo.progress = 100;
+                downloadInfo.filePath = instructionsFile.getAbsolutePath();
+                
+                Log.d(TAG, "✓ Download instructions created: " + filename);
+                return downloadInfo;
                 
             } catch (Exception e) {
-                Log.e(TAG, "External downloader approach failed: " + e.getMessage());
-                throw new RuntimeException("External downloader failed: " + e.getMessage());
+                Log.e(TAG, "Failed to create instructions: " + e.getMessage());
+                throw new RuntimeException("Failed to create instructions: " + e.getMessage());
             }
         });
     }
     
     /**
-     * Create an instruction URL that can be downloaded
+     * Enhanced HLS stream detection
      */
-    private String createInstructionUrl(String embedUrl, String title, String filename) {
-        // Create a data URL with download instructions
-        String instructions = 
-            "MTV Download Instructions\n" +
-            "========================\n\n" +
-            "Title: " + title + "\n" +
-            "Filename: " + filename + "\n" +
-            "Original URL: " + embedUrl + "\n\n" +
-            "To download this video:\n" +
-            "1. Open the original URL in a browser\n" +
-            "2. Use a video downloader extension\n" +
-            "3. Or use external download tools\n\n" +
-            "Original URL: " + embedUrl;
+    private boolean isHLSStream(String streamUrl) {
+        if (streamUrl == null || streamUrl.isEmpty()) {
+            return false;
+        }
         
-        // Convert to base64 data URL
-        String base64 = android.util.Base64.encodeToString(instructions.getBytes(), android.util.Base64.NO_WRAP);
-        return "data:text/plain;base64," + base64;
+        String lower = streamUrl.toLowerCase();
+        
+        // Check for M3U8 URLs
+        if (lower.contains(".m3u8") || lower.contains("m3u8?")) {
+            return true;
+        }
+        
+        // Check for M3U8 content
+        if (streamUrl.contains("#EXTM3U") || streamUrl.contains("#EXT-X-")) {
+            return true;
+        }
+        
+        // Check for HLS indicators in URL
+        if (lower.contains("hls") && (lower.contains("stream") || lower.contains("playlist"))) {
+            return true;
+        }
+        
+        // Check for common HLS streaming patterns
+        if (lower.matches(".*/playlist\\.m3u8.*") || lower.matches(".*/master\\.m3u8.*")) {
+            return true;
+        }
+        
+        return false;
     }
     
     /**
@@ -509,9 +683,10 @@ public class StreamDownloadManager {
                                                               String season, String episode, String originalUrl) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                // Check if this is an HLS manifest URL or content
-                if (streamUrl.contains(".m3u8") || streamUrl.contains("EXTM3U")) {
+                // Enhanced HLS detection
+                if (isHLSStream(streamUrl)) {
                     Log.d(TAG, "🎬 HLS stream detected, using HLS downloader");
+                    Log.d(TAG, "Stream URL: " + streamUrl.substring(0, Math.min(200, streamUrl.length())) + "...");
                     return handleHLSDownload(streamUrl, title, type, season, episode, originalUrl).get();
                 }
                 
@@ -632,11 +807,13 @@ public class StreamDownloadManager {
                             baseUrl = finalOriginalUrl; // Use original URL as base
                         } else {
                             // Fetch M3U8 content from URL
+                            Log.d(TAG, "Fetching M3U8 content from: " + finalStreamUrl);
                             m3u8Content = fetchM3U8Content(finalStreamUrl);
                             baseUrl = finalStreamUrl;
-                            if (m3u8Content == null) {
-                                throw new Exception("Failed to fetch M3U8 content");
+                            if (m3u8Content == null || m3u8Content.isEmpty()) {
+                                throw new Exception("Failed to fetch M3U8 content - URL may be invalid or protected");
                             }
+                            Log.d(TAG, "M3U8 content fetched, length: " + m3u8Content.length());
                         }
                         
                         // Use HLS downloader to process the manifest
@@ -659,13 +836,63 @@ public class StreamDownloadManager {
                         
                         Log.d(TAG, "✅ HLS download completed: " + outputPath);
                         
-                    } catch (Exception e) {
-                        Log.e(TAG, "❌ HLS download failed: " + e.getMessage());
+                        } catch (Exception e) {
+                            Log.e(TAG, "❌ HLS download failed: " + e.getMessage());
+                            Log.d(TAG, "🎥 Using SPlayer-optimized HLS playlist download");
                         
-                        downloadInfo.status = "Failed";
-                        
-                        for (DownloadListener listener : listeners) {
-                            listener.onDownloadFailed(downloadInfo, "HLS processing failed: " + e.getMessage());
+                        try {
+                            // SPlayer-optimized approach: Download M3U8 playlist for SPlayer
+                            String m3u8Filename = finalTitle.replaceAll("[^a-zA-Z0-9\\s\\-]", "").trim().replaceAll("\\s+", "_") + "_SPlayer.m3u8";
+                            
+                            // Get the M3U8 content from the outer scope or use the stream URL
+                            String contentForSPlayer;
+                            if (finalStreamUrl.contains("#EXTM3U")) {
+                                contentForSPlayer = finalStreamUrl; // It's already M3U8 content
+                            } else {
+                                // Try to fetch M3U8 content, but don't fail if it doesn't work
+                                String fetchedContent = fetchM3U8Content(finalStreamUrl);
+                                contentForSPlayer = fetchedContent != null ? fetchedContent : finalStreamUrl;
+                            }
+                            
+                            // Create enhanced M3U8 content for SPlayer
+                            String enhancedM3U8Content = createSPlayerOptimizedM3U8(contentForSPlayer, finalStreamUrl);
+                            
+                            // Save M3U8 file directly instead of downloading
+                            File splayerDownloadsDir = new File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "MTV_Downloads");
+                            if (!splayerDownloadsDir.exists()) {
+                                splayerDownloadsDir.mkdirs();
+                            }
+                            
+                            File m3u8File = new File(splayerDownloadsDir, m3u8Filename);
+                            
+                            // Write enhanced M3U8 content to file
+                            java.io.FileWriter writer = new java.io.FileWriter(m3u8File);
+                            writer.write(enhancedM3U8Content);
+                            writer.close();
+                            
+                            // Create download info for the saved playlist
+                            DownloadInfo playlistDownloadInfo = new DownloadInfo(-2, finalTitle, finalOriginalUrl, finalStreamUrl, 
+                                                                               m3u8Filename, downloadInfo.type, downloadInfo.season, downloadInfo.episode);
+                            playlistDownloadInfo.status = "Ready for SPlayer";
+                            playlistDownloadInfo.progress = 100;
+                            playlistDownloadInfo.filePath = m3u8File.getAbsolutePath();
+                            
+                            // Notify listeners of completion immediately
+                            for (DownloadListener listener : listeners) {
+                                listener.onDownloadCompleted(playlistDownloadInfo, m3u8File.getAbsolutePath());
+                            }
+                            
+                            Log.d(TAG, "✅ SPlayer playlist created: " + m3u8Filename);
+                            Log.d(TAG, "🎥 File ready for SPlayer: " + m3u8File.getAbsolutePath());
+                            
+                        } catch (Exception fallbackError) {
+                            Log.e(TAG, "❌ Fallback also failed: " + fallbackError.getMessage());
+                            
+                            downloadInfo.status = "Failed";
+                            
+                            for (DownloadListener listener : listeners) {
+                                listener.onDownloadFailed(downloadInfo, "HLS processing failed - " + e.getMessage() + ". Try using an external downloader.");
+                            }
                         }
                     }
                 });
@@ -719,6 +946,66 @@ public class StreamDownloadManager {
         } catch (Exception e) {
             Log.e(TAG, "Error fetching M3U8: " + e.getMessage());
             return null;
+        }
+    }
+    
+    /**
+     * Create SPlayer-optimized M3U8 content
+     */
+    private String createSPlayerOptimizedM3U8(String originalM3U8Content, String baseUrl) {
+        try {
+            Log.d(TAG, "Creating SPlayer-optimized M3U8 content");
+            
+            if (originalM3U8Content.contains("#EXTM3U")) {
+                // Already M3U8 content - enhance it for SPlayer
+                StringBuilder enhanced = new StringBuilder();
+                enhanced.append("# MTV App - SPlayer Compatible Playlist\n");
+                enhanced.append("# Original source: ").append(baseUrl).append("\n");
+                enhanced.append("# Date: ").append(new java.util.Date().toString()).append("\n\n");
+                enhanced.append(originalM3U8Content);
+                
+                // Fix relative URLs to absolute URLs if needed
+                String content = enhanced.toString();
+                if (content.contains("/proxy/") && baseUrl.contains("vidlink.pro")) {
+                    // Convert relative proxy URLs to absolute URLs with proper base
+                    content = content.replaceAll("/proxy/", "https://vidlink.pro/proxy/");
+                }
+                
+                return content;
+            } else {
+                // Create M3U8 from URL
+                StringBuilder m3u8 = new StringBuilder();
+                m3u8.append("#EXTM3U\n");
+                m3u8.append("# MTV App - SPlayer Compatible Stream\n");
+                m3u8.append("# Original URL: ").append(baseUrl).append("\n");
+                m3u8.append("# Date: ").append(new java.util.Date().toString()).append("\n");
+                m3u8.append("# Note: This playlist contains the direct stream URL\n");
+                m3u8.append("# SPlayer will handle the HLS processing automatically\n\n");
+                
+                // Add stream info
+                m3u8.append("#EXT-X-VERSION:3\n");
+                m3u8.append("#EXT-X-TARGETDURATION:10\n");
+                m3u8.append("#EXT-X-MEDIA-SEQUENCE:0\n\n");
+                
+                // Add the stream URL as a single "segment"
+                m3u8.append("#EXTINF:3600.0,MTV Stream\n");
+                m3u8.append(originalM3U8Content).append("\n");
+                m3u8.append("#EXT-X-ENDLIST\n");
+                
+                return m3u8.toString();
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Error creating SPlayer M3U8: " + e.getMessage());
+            
+            // Fallback: Simple M3U8 with direct URL
+            return "#EXTM3U\n" +
+                   "# MTV App - Fallback Playlist\n" +
+                   "# Stream URL: " + baseUrl + "\n\n" +
+                   "#EXT-X-VERSION:3\n" +
+                   "#EXT-X-TARGETDURATION:10\n" +
+                   "#EXTINF:3600.0,MTV Stream\n" +
+                   baseUrl + "\n" +
+                   "#EXT-X-ENDLIST\n";
         }
     }
     
@@ -883,10 +1170,12 @@ public class StreamDownloadManager {
     public List<DownloadInfo> getCompletedDownloads() {
         List<DownloadInfo> completed = new ArrayList<>();
         
+        // Check MTV Downloads directory for videos and playlists
         File downloadsDir = new File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "MTV_Downloads");
         if (downloadsDir.exists() && downloadsDir.isDirectory()) {
             File[] files = downloadsDir.listFiles((dir, name) -> 
-                name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".avi") || name.endsWith(".webm"));
+                name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".avi") || 
+                name.endsWith(".webm") || name.endsWith(".m3u8"));
             
             if (files != null) {
                 for (File file : files) {
@@ -897,13 +1186,49 @@ public class StreamDownloadManager {
                     
                     DownloadInfo info = new DownloadInfo(-1, title, "", "", filename, type, seasonEpisode[0], seasonEpisode[1]);
                     info.filePath = file.getAbsolutePath();
-                    info.status = "Completed";
+                    
+                    if (filename.endsWith(".m3u8")) {
+                        info.status = "HLS Playlist (SPlayer)";
+                    } else {
+                        info.status = "Video File";
+                    }
+                    
+                    info.progress = 100;
+                    completed.add(info);
+                }
+            }
+        }
+        
+        // Check MTV Instructions directory for download guides
+        File instructionsDir = new File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "MTV_Instructions");
+        if (instructionsDir.exists() && instructionsDir.isDirectory()) {
+            File[] instructionFiles = instructionsDir.listFiles((dir, name) -> name.endsWith("_instructions.txt"));
+            
+            if (instructionFiles != null) {
+                for (File file : instructionFiles) {
+                    String filename = file.getName();
+                    String title = filename.replace("_instructions.txt", "").replace("_", " ");
+                    
+                    DownloadInfo info = new DownloadInfo(-1, title, "", "", filename, "instruction", null, null);
+                    info.filePath = file.getAbsolutePath();
+                    info.status = "Download Instructions";
                     info.progress = 100;
                     
                     completed.add(info);
                 }
             }
         }
+        
+        // Sort by modification date (newest first)
+        completed.sort((a, b) -> {
+            try {
+                File fileA = new File(a.filePath);
+                File fileB = new File(b.filePath);
+                return Long.compare(fileB.lastModified(), fileA.lastModified());
+            } catch (Exception e) {
+                return 0;
+            }
+        });
         
         return completed;
     }
@@ -915,12 +1240,12 @@ public class StreamDownloadManager {
     }
     
     private String extractTitleFromFilename(String filename) {
-        String nameWithoutExt = filename.replaceFirst("\\.[^.]*$", "");
+        String nameWithoutExt = filename.replaceFirst("\\\\.[^.]*$", "");
         String[] parts = nameWithoutExt.split("_");
         
         StringBuilder title = new StringBuilder();
         for (String part : parts) {
-            if (part.matches("S\\d+E\\d+") || part.matches("\\d+p")) {
+            if (part.matches("S\\\\d+E\\\\d+") || part.matches("\\\\d+p")) {
                 break;
             }
             if (title.length() > 0) title.append(" ");
@@ -931,7 +1256,7 @@ public class StreamDownloadManager {
     }
     
     private String[] extractSeasonEpisodeFromFilename(String filename) {
-        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("S(\\d+)E(\\d+)");
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("S(\\\\d+)E(\\\\d+)");
         java.util.regex.Matcher matcher = pattern.matcher(filename);
         
         if (matcher.find()) {
