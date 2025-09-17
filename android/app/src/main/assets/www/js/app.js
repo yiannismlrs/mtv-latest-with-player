@@ -63,6 +63,10 @@ class MTVApp {
         this.showWatchlist();
         this.setActiveNav(3);
         break;
+      case 'downloads':
+        this.showDownloads();
+        this.setActiveNav(4);
+        break;
       case 'search':
         this.showSearchPage();
         break;
@@ -398,11 +402,20 @@ class MTVApp {
         </div>
 
         <div style="max-width: 600px; margin: 0 auto; padding: 0 1rem;">
-          <div style="display: flex; gap: 1rem; margin-bottom: 2rem;">
-            <button onclick="app.watchContent(${content.id}, '${type}', '${title}')" style="flex: 1; background: var(--primary-orange); color: white; border: none; padding: 1rem 2rem; border-radius: 8px; font-weight: bold; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
-              ▶️ Watch
-            </button>
-            <button onclick="app.toggleWatchlist(${content.id}, '${type}', '${title.replace(/'/g, "\\'")}', '${posterUrl}')" style="flex: 1; background: var(--card-bg); color: var(--text-primary); border: 1px solid var(--border-color); padding: 1rem 2rem; border-radius: 8px; font-weight: bold; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+          <div style="display: flex; gap: 0.75rem; margin-bottom: 2rem; flex-wrap: wrap;">
+            ${type === 'tv' ? `
+              <button onclick="app.showSeasonEpisodeSelection(${content.id}, '${title}')" style="flex: 1; min-width: 120px; background: var(--primary-orange); color: white; border: none; padding: 0.875rem 1.5rem; border-radius: 8px; font-weight: bold; font-size: 0.95rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                📺 Select Episode
+              </button>
+            ` : `
+              <button onclick="app.watchContent(${content.id}, '${type}', '${title}')" style="flex: 1; min-width: 100px; background: var(--primary-orange); color: white; border: none; padding: 0.875rem 1.5rem; border-radius: 8px; font-weight: bold; font-size: 0.95rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                ▶️ Watch
+              </button>
+              <button onclick="app.downloadContent(${content.id}, '${type}', '${title}', '${year}')" style="flex: 1; min-width: 100px; background: var(--card-bg); color: var(--text-primary); border: 1px solid var(--primary-orange); padding: 0.875rem 1.5rem; border-radius: 8px; font-weight: bold; font-size: 0.95rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                💾 Download
+              </button>
+            `}
+            <button onclick="app.toggleWatchlist(${content.id}, '${type}', '${title.replace(/'/g, "\\'")}', '${posterUrl}')" style="flex: 1; min-width: 100px; background: var(--card-bg); color: var(--text-primary); border: 1px solid var(--border-color); padding: 0.875rem 1.5rem; border-radius: 8px; font-weight: bold; font-size: 0.95rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
               ${isInWatchlist ? '❌ Remove' : '📋 Add List'}
             </button>
           </div>
@@ -423,6 +436,152 @@ class MTVApp {
     `;
   }
 
+  async showSeasonEpisodeSelection(tvId, title) {
+    console.log(`Showing season/episode selection for: ${title} (${tvId})`);
+    
+    try {
+      // Get TV show details to know available seasons
+      const tvDetails = await apiService.getTVDetails(tvId);
+      
+      if (!tvDetails || !tvDetails.seasons) {
+        this.showError('Failed to load season information.');
+        return;
+      }
+      
+      // Filter out special seasons (season 0 is usually specials)
+      const regularSeasons = tvDetails.seasons.filter(season => season.season_number > 0);
+      
+      const contentSections = document.getElementById('contentSections');
+      contentSections.innerHTML = `
+        <div class="season-episode-selection">
+          <button onclick="app.goBack()" style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 1rem; border-radius: 8px; margin-bottom: 1rem; cursor: pointer;">← Back</button>
+          
+          <div style="text-align: center; margin-bottom: 2rem;">
+            <h2 style="color: var(--text-primary); margin-bottom: 0.5rem;">${title}</h2>
+            <p style="color: var(--text-secondary);">Select Season & Episode</p>
+          </div>
+          
+          <div class="seasons-container">
+            ${regularSeasons.map(season => `
+              <div class="season-card" onclick="app.showEpisodesForSeason(${tvId}, ${season.season_number}, '${title}', '${season.name}')">
+                <div class="season-poster">
+                  <img src="${season.poster_path ? apiService.getImageUrl(season.poster_path, 'w300') : 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjQ1MCIgdmlld0JveD0iMCAwIDMwMCA0NTAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjMwMCIgaGVpZ2h0PSI0NTAiIGZpbGw9IiMxODE4MUIiLz48dGV4dCB4PSIxNTAiIHk9IjIzMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iIzUzNTM1NyIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0Ij5ObyBJbWFnZTwvdGV4dD48L3N2Zz4='}" alt="${season.name}" style="width: 100%; border-radius: 8px;">
+                </div>
+                <div class="season-info">
+                  <h3 style="color: var(--text-primary); font-size: 1rem; margin: 0.5rem 0;">${season.name}</h3>
+                  <p style="color: var(--text-secondary); font-size: 0.85rem; margin: 0;">${season.episode_count} episodes</p>
+                  ${season.air_date ? `<p style="color: var(--text-muted); font-size: 0.8rem; margin: 0.25rem 0 0 0;">${new Date(season.air_date).getFullYear()}</p>` : ''}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+      
+    } catch (error) {
+      console.error('Failed to load season information:', error);
+      this.showError('Failed to load season information.');
+    }
+  }
+  
+  async showEpisodesForSeason(tvId, seasonNumber, showTitle, seasonTitle) {
+    console.log(`Loading episodes for: ${showTitle} - ${seasonTitle}`);
+    
+    this.showLoading(true);
+    
+    try {
+      const seasonDetails = await apiService.getTVSeasonDetails(tvId, seasonNumber);
+      
+      if (!seasonDetails || !seasonDetails.episodes) {
+        this.showError('Failed to load episode information.');
+        return;
+      }
+      
+      const contentSections = document.getElementById('contentSections');
+      contentSections.innerHTML = `
+        <div class="episode-selection">
+          <button onclick="app.showSeasonEpisodeSelection(${tvId}, '${showTitle}')" style="background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-primary); padding: 0.5rem 1rem; border-radius: 8px; margin-bottom: 1rem; cursor: pointer;">← Back to Seasons</button>
+          
+          <div style="text-align: center; margin-bottom: 2rem;">
+            <h2 style="color: var(--text-primary); margin-bottom: 0.5rem;">${showTitle}</h2>
+            <h3 style="color: var(--text-secondary); margin: 0;">${seasonTitle}</h3>
+          </div>
+          
+          <div class="episodes-container">
+            ${seasonDetails.episodes.map(episode => `
+              <div class="episode-card">
+                <div class="episode-still" onclick="app.watchTVEpisode(${tvId}, ${seasonNumber}, ${episode.episode_number}, '${showTitle}', '${episode.name}')">
+                  <img src="${episode.still_path ? apiService.getImageUrl(episode.still_path, 'w300') : 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjE2OSIgdmlld0JveD0iMCAwIDMwMCAxNjkiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjMwMCIgaGVpZ2h0PSIxNjkiIGZpbGw9IiMxODE4MUIiLz48dGV4dCB4PSIxNTAiIHk9Ijg5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjNTM1MzU3IiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiPk5vIEltYWdlPC90ZXh0Pjwvc3ZnPg=='}" alt="${episode.name}" style="width: 100%; border-radius: 8px;">
+                  <div class="play-overlay">
+                    <div class="play-button">▶️</div>
+                  </div>
+                </div>
+                <div class="episode-info">
+                  <div class="episode-title">
+                    <span class="episode-number">E${episode.episode_number}</span>
+                    <span class="episode-name">${episode.name}</span>
+                  </div>
+                  <p class="episode-overview">${episode.overview || 'No description available.'}</p>
+                  ${episode.air_date ? `<p class="episode-air-date">Aired: ${new Date(episode.air_date).toLocaleDateString()}</p>` : ''}
+                  ${episode.runtime ? `<p class="episode-runtime">${episode.runtime} minutes</p>` : ''}
+                  <div class="episode-actions" style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                    <button onclick="app.watchTVEpisode(${tvId}, ${seasonNumber}, ${episode.episode_number}, '${showTitle}', '${episode.name}')" style="flex: 1; background: var(--primary-orange); color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.85rem; cursor: pointer;">
+                      ▶️ Watch
+                    </button>
+                    <button onclick="app.downloadTVEpisode(${tvId}, ${seasonNumber}, ${episode.episode_number}, '${showTitle}', '${episode.name}')" style="flex: 1; background: var(--card-bg); color: var(--text-primary); border: 1px solid var(--primary-orange); padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.85rem; cursor: pointer;">
+                      💾 Download
+                    </button>
+                  </div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+      
+    } catch (error) {
+      console.error('Failed to load episodes:', error);
+      this.showError('Failed to load episode information.');
+    } finally {
+      this.showLoading(false);
+    }
+  }
+  
+  watchTVEpisode(tvId, season, episode, showTitle, episodeTitle) {
+    console.log(`Watching: ${showTitle} S${season}E${episode} - ${episodeTitle}`);
+    
+    // Get additional metadata for better provider resolution
+    const contentDetails = this.getCurrentContentDetails();
+    const year = contentDetails?.year || '2023'; // Fallback year
+    
+    // Use provider system with season and episode info
+    this.launchSPlayerWithEpisode(tvId, 'tv', showTitle, year, season, episode);
+  }
+  
+  launchSPlayerWithEpisode(mediaId, mediaType, title, year, season, episode) {
+    console.log(`Launching VidLink for: ${title} S${season}E${episode} (${mediaType} - ${mediaId})`);
+    console.log(`Year: ${year}`);
+    
+    // Check if Android interface is available (running in WebView)
+    if (typeof Android !== 'undefined' && typeof Android.openInVidLink === 'function') {
+      console.log('Using VidLink with season/episode info');
+      
+      try {
+        // Use the VidLink interface with season and episode
+        Android.openInVidLink(mediaId, mediaType, title, year, season.toString(), episode.toString());
+        console.log('Called VidLink with episode info successfully');
+        return;
+      } catch (error) {
+        console.error('Error using VidLink with episode info:', error);
+      }
+    } else {
+      console.log('Android VidLink interface not available, using fallback');
+    }
+    
+    // Fallback to general TV interface
+    this.launchSPlayer(mediaId, mediaType, title, year);
+  }
+
   watchContent(id, type, title) {
     console.log(`Attempting to play: ${title} (${type} - ${id})`);
     
@@ -432,6 +591,85 @@ class MTVApp {
     
     // Use provider system instead of direct URL construction
     this.launchSPlayer(id, type, title, year);
+  }
+  
+  downloadContent(id, type, title, year) {
+    console.log(`Attempting to download: ${title} (${type} - ${id})`);
+    
+    // Check if Android interface is available (running in WebView)
+    if (typeof Android !== 'undefined' && typeof Android.downloadContent === 'function') {
+      console.log('Using Android download interface');
+      
+      try {
+        // Use the Android download interface
+        Android.downloadContent(id, type, title, year, null, null);
+        console.log('Called Android download interface successfully');
+        return;
+      } catch (error) {
+        console.error('Error using Android download interface:', error);
+        this.showToast('Download failed: ' + error.message);
+      }
+    } else {
+      console.log('Android download interface not available');
+      this.showToast('Download not available in this environment');
+    }
+  }
+  
+  downloadTVEpisode(tvId, season, episode, showTitle, episodeTitle) {
+    console.log(`Attempting to download: ${showTitle} S${season}E${episode} - ${episodeTitle}`);
+    
+    // Check if Android interface is available (running in WebView)
+    if (typeof Android !== 'undefined' && typeof Android.downloadContent === 'function') {
+      console.log('Using Android download interface for TV episode');
+      
+      try {
+        // Get additional metadata
+        const contentDetails = this.getCurrentContentDetails();
+        const year = contentDetails?.year || '2023'; // Fallback year
+        
+        // Use the Android download interface with season and episode
+        Android.downloadContent(tvId, 'tv', showTitle, year, season.toString(), episode.toString());
+        console.log('Called Android download interface for TV episode successfully');
+        return;
+      } catch (error) {
+        console.error('Error using Android download interface for TV episode:', error);
+        this.showToast('Download failed: ' + error.message);
+      }
+    } else {
+      console.log('Android download interface not available');
+      this.showToast('Download not available in this environment');
+    }
+  }
+  
+  showToast(message) {
+    // Create a simple toast notification
+    const toast = document.createElement('div');
+    toast.textContent = message;
+    toast.style.cssText = `
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--card-bg);
+      color: var(--text-primary);
+      padding: 1rem 2rem;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      z-index: 10000;
+      font-size: 0.9rem;
+      max-width: 80%;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    `;
+    
+    document.body.appendChild(toast);
+    
+    // Remove toast after 3 seconds
+    setTimeout(() => {
+      if (toast.parentNode) {
+        toast.parentNode.removeChild(toast);
+      }
+    }, 3000);
   }
   
   getCurrentContentDetails() {
@@ -584,6 +822,175 @@ class MTVApp {
     this.watchlist = storageService.getWatchlist();
     this.renderCategoryPage('📋 My Watchlist', this.watchlist, null);
   }
+  
+  showDownloads() {
+    this.navigateToPage('downloads');
+    this.renderDownloadsPage();
+  }
+  
+  renderDownloadsPage() {
+    const contentSections = document.getElementById('contentSections');
+    
+    contentSections.innerHTML = `
+      <div class="downloads-page">
+        <div class="content-section">
+          <div class="section-header">
+            <h2 class="section-title">💾 Downloads</h2>
+            <button onclick="app.refreshDownloads()" style="background: var(--primary-orange); color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.85rem; cursor: pointer;">
+              🔄 Refresh
+            </button>
+          </div>
+          
+          <!-- Active Downloads -->
+          <div id="activeDownloads" class="downloads-section">
+            <h3 style="color: var(--text-primary); margin-bottom: 1rem; font-size: 1.1rem;">🔄 Active Downloads</h3>
+            <div id="activeDownloadsList"></div>
+          </div>
+          
+          <!-- Completed Downloads -->
+          <div id="completedDownloads" class="downloads-section" style="margin-top: 2rem;">
+            <h3 style="color: var(--text-primary); margin-bottom: 1rem; font-size: 1.1rem;">✓ Completed Downloads</h3>
+            <div id="completedDownloadsList"></div>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    this.loadDownloads();
+  }
+  
+  loadDownloads() {
+    if (typeof Android === 'undefined') {
+      document.getElementById('activeDownloadsList').innerHTML = 
+        '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Downloads only available in Android app</p>';
+      document.getElementById('completedDownloadsList').innerHTML = 
+        '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Downloads only available in Android app</p>';
+      return;
+    }
+    
+    try {
+      // Load active downloads
+      const activeDownloadsJson = Android.getActiveDownloads();
+      const activeDownloads = JSON.parse(activeDownloadsJson);
+      this.renderActiveDownloads(activeDownloads);
+      
+      // Load completed downloads
+      const completedDownloadsJson = Android.getCompletedDownloads();
+      const completedDownloads = JSON.parse(completedDownloadsJson);
+      this.renderCompletedDownloads(completedDownloads);
+      
+    } catch (error) {
+      console.error('Error loading downloads:', error);
+      document.getElementById('activeDownloadsList').innerHTML = 
+        '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Error loading downloads</p>';
+      document.getElementById('completedDownloadsList').innerHTML = 
+        '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">Error loading downloads</p>';
+    }
+  }
+  
+  renderActiveDownloads(downloads) {
+    const container = document.getElementById('activeDownloadsList');
+    
+    if (downloads.length === 0) {
+      container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">No active downloads</p>';
+      return;
+    }
+    
+    container.innerHTML = downloads.map(download => `
+      <div class="download-item active" data-download-id="${download.id}">
+        <div class="download-info">
+          <h4 class="download-title">${download.title}${download.season ? ` S${download.season}E${download.episode}` : ''}</h4>
+          <p class="download-filename">${download.filename}</p>
+          <div class="download-progress">
+            <div class="progress-bar">
+              <div class="progress-fill" style="width: ${download.progress}%"></div>
+            </div>
+            <span class="progress-text">${download.progress}% - ${download.status}</span>
+          </div>
+        </div>
+        <div class="download-actions">
+          <button onclick="app.cancelDownload('${download.id}')" class="cancel-btn">❌ Cancel</button>
+        </div>
+      </div>
+    `).join('');
+  }
+  
+  renderCompletedDownloads(downloads) {
+    const container = document.getElementById('completedDownloadsList');
+    
+    if (downloads.length === 0) {
+      container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">No completed downloads</p>';
+      return;
+    }
+    
+    container.innerHTML = downloads.map(download => `
+      <div class="download-item completed">
+        <div class="download-info">
+          <h4 class="download-title">${download.title}${download.season ? ` S${download.season}E${download.episode}` : ''}</h4>
+          <p class="download-filename">${download.filename}</p>
+          <p class="download-status">✓ Download complete</p>
+        </div>
+        <div class="download-actions">
+          <button onclick="app.playDownloadedFile('${download.filePath}')" class="play-btn">▶️ Play</button>
+        </div>
+      </div>
+    `).join('');
+  }
+  
+  refreshDownloads() {
+    this.loadDownloads();
+  }
+  
+  cancelDownload(downloadId) {
+    if (typeof Android !== 'undefined' && typeof Android.cancelDownload === 'function') {
+      Android.cancelDownload(downloadId);
+      // Refresh after a short delay
+      setTimeout(() => this.loadDownloads(), 1000);
+    }
+  }
+  
+  playDownloadedFile(filePath) {
+    if (typeof Android !== 'undefined' && typeof Android.playDownloadedFile === 'function') {
+      Android.playDownloadedFile(filePath);
+    }
+  }
+  
+  // Download event callbacks from Android
+  onDownloadStarted(downloadId) {
+    console.log('Download started:', downloadId);
+    if (this.currentPage === 'downloads') {
+      this.loadDownloads();
+    }
+  }
+  
+  onDownloadProgress(downloadId, progress) {
+    // Update progress bar if downloads page is active
+    if (this.currentPage === 'downloads') {
+      const downloadItem = document.querySelector(`[data-download-id="${downloadId}"]`);
+      if (downloadItem) {
+        const progressFill = downloadItem.querySelector('.progress-fill');
+        const progressText = downloadItem.querySelector('.progress-text');
+        if (progressFill) progressFill.style.width = progress + '%';
+        if (progressText) progressText.textContent = progress + '% - Downloading';
+      }
+    }
+  }
+  
+  onDownloadCompleted(downloadId, filePath) {
+    console.log('Download completed:', downloadId, filePath);
+    this.showToast('Download completed!');
+    if (this.currentPage === 'downloads') {
+      setTimeout(() => this.loadDownloads(), 1000);
+    }
+  }
+  
+  onDownloadFailed(downloadId, error) {
+    console.log('Download failed:', downloadId, error);
+    this.showToast('Download failed: ' + error);
+    if (this.currentPage === 'downloads') {
+      setTimeout(() => this.loadDownloads(), 1000);
+    }
+  }
 
   renderMoviesWithTabs() {
     const contentSections = document.getElementById('contentSections');
@@ -721,6 +1128,7 @@ function showHome() { app.showHome(); }
 function showMovies() { app.showMovies(); }
 function showTVShows() { app.showTVShows(); }
 function showWatchlist() { app.showWatchlist(); }
+function showDownloads() { app.showDownloads(); }
 function exploreContent() { app.showMovies(); }
 
 // Initialize app when DOM is loaded

@@ -551,6 +551,175 @@ body {
   100% { transform: rotate(360deg); }
 }
 
+/* Season and Episode Selection */
+.seasons-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.season-card {
+  background-color: var(--card-bg);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+}
+
+.season-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 30px rgba(255, 107, 53, 0.2);
+  border-color: var(--primary-orange);
+}
+
+.season-poster {
+  width: 100%;
+  aspect-ratio: 2/3;
+  background-color: var(--hover-bg);
+  overflow: hidden;
+}
+
+.season-poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.season-info {
+  padding: 1rem;
+}
+
+.season-info h3 {
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+  line-height: 1.3;
+}
+
+.season-info p {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Episodes */
+.episodes-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.episode-card {
+  background-color: var(--card-bg);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  display: flex;
+  gap: 1rem;
+}
+
+.episode-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 20px rgba(255, 107, 53, 0.15);
+  border-color: var(--primary-orange);
+}
+
+.episode-still {
+  width: 200px;
+  height: 112px;
+  background-color: var(--hover-bg);
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.episode-still img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.play-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.episode-card:hover .play-overlay {
+  opacity: 1;
+}
+
+.play-button {
+  font-size: 2rem;
+  color: white;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.episode-info {
+  padding: 1rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.episode-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.episode-number {
+  background: var(--primary-orange);
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.episode-name {
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.episode-overview {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin: 0.5rem 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.episode-air-date,
+.episode-runtime {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin: 0.25rem 0 0 0;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .header {
@@ -592,5 +761,160 @@ body {
   .cta-buttons {
     flex-direction: column;
     align-items: flex-start;
+  }
+  
+  /* Season and Episode Selection Mobile */
+  .seasons-container {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 1rem;
+  }
+  
+  .season-info {
+    padding: 0.75rem;
+  }
+  
+  .season-info h3 {
+    font-size: 0.9rem;
+  }
+  
+  .episode-card {
+    flex-direction: column;
+    gap: 0;
+  }
+  
+  .episode-still {
+    width: 100%;
+    height: 150px;
+  }
+  
+  .episode-info {
+    padding: 1rem;
+  }
+  
+  .episode-overview {
+    -webkit-line-clamp: 3;
+  }
+}
+
+/* Downloads UI */
+.downloads-section {
+  margin-bottom: 2rem;
+}
+
+.download-item {
+  background-color: var(--card-bg);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.download-info {
+  flex: 1;
+}
+
+.download-title {
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+  line-height: 1.3;
+}
+
+.download-filename {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  margin: 0 0 0.5rem 0;
+  font-family: monospace;
+}
+
+.download-status {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+.download-progress {
+  margin-top: 0.5rem;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background-color: var(--hover-bg);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 0.25rem;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary-orange), var(--secondary-orange));
+  transition: width 0.3s ease;
+  border-radius: 4px;
+}
+
+.progress-text {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.download-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.cancel-btn,
+.play-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all 0.3s ease;
+}
+
+.cancel-btn {
+  background: var(--hover-bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.cancel-btn:hover {
+  background: #ff4444;
+  color: white;
+  border-color: #ff4444;
+}
+
+.play-btn {
+  background: var(--primary-orange);
+  color: white;
+}
+
+.play-btn:hover {
+  background: var(--secondary-orange);
+}
+
+/* Mobile Downloads */
+@media (max-width: 768px) {
+  .download-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .download-actions {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .cancel-btn,
+  .play-btn {
+    flex: 1;
   }
 }

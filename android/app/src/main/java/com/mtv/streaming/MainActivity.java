@@ -10,9 +10,15 @@ import android.webkit.JavascriptInterface;
 import android.widget.Toast;
 import android.content.Intent;
 import android.net.Uri;
+import android.util.Log;
+import java.util.List;
+import com.mtv.streaming.download.DownloadManager;
+import com.mtv.streaming.download.DownloadManager.DownloadInfo;
+import com.mtv.streaming.download.DownloadManager.DownloadListener;
 
-public class MainActivity extends Activity {
+public class MainActivity extends Activity implements DownloadListener {
     private WebView webView;
+    private DownloadManager downloadManager;
     
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -26,7 +32,7 @@ public class MainActivity extends Activity {
         webView.setBackgroundColor(Color.parseColor("#0D1117"));
         webView.setBackgroundResource(0); // Remove any default background
         
-        // Configure WebView for better performance
+        // Configure WebView for better performance and video playback
         WebSettings webSettings = webView.getSettings();
         webSettings.setJavaScriptEnabled(true);
         webSettings.setDomStorageEnabled(true);
@@ -35,6 +41,9 @@ public class MainActivity extends Activity {
         webSettings.setAllowFileAccess(true);
         webSettings.setAllowContentAccess(true);
         webSettings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        webSettings.setMediaPlaybackRequiresUserGesture(false); // Allow auto-play
+        webSettings.setAllowFileAccessFromFileURLs(true);
+        webSettings.setAllowUniversalAccessFromFileURLs(true);
         
         // Set user agent for better compatibility
         webSettings.setUserAgentString(webSettings.getUserAgentString() + " MTVApp/1.0");
@@ -72,10 +81,14 @@ public class MainActivity extends Activity {
                         return true;
                     }
                 }
-                // Handle external website URLs - open in system browser
+                // Handle external website URLs
                 else if (url.startsWith("http://") || url.startsWith("https://")) {
-                    // Check if it's not our local file
-                    if (!url.contains("file:///android_asset/")) {
+                    // Allow VidLink URLs to load in WebView
+                    if (url.contains("vidlink.pro")) {
+                        return false; // Allow loading in WebView
+                    }
+                    // Check if it's not our local file - open other external URLs in browser
+                    else if (!url.contains("file:///android_asset/")) {
                         Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                         startActivity(browserIntent);
                         return true; // Prevent loading in WebView
@@ -85,6 +98,10 @@ public class MainActivity extends Activity {
                 return false;
             }
         });
+        
+        // Initialize download manager
+        downloadManager = DownloadManager.getInstance(this);
+        downloadManager.addDownloadListener(this);
         
         // Load the local web app
         webView.loadUrl("file:///android_asset/www/index.html");
@@ -110,62 +127,192 @@ public class MainActivity extends Activity {
         
         @JavascriptInterface
         public void openInSPlayer(String mediaId, String mediaType, String title, String year) {
-            android.util.Log.d("MTV_DEBUG", "=== openInSPlayer called ===");
+            openInVidLink(mediaId, mediaType, title, year, null, null);
+        }
+        
+        @JavascriptInterface
+        public void openInVidLink(String mediaId, String mediaType, String title, String year, String season, String episode) {
+            android.util.Log.d("MTV_DEBUG", "=== openInVidLink called ===");
             android.util.Log.d("MTV_DEBUG", "Media ID: " + mediaId);
             android.util.Log.d("MTV_DEBUG", "Media Type: " + mediaType);
             android.util.Log.d("MTV_DEBUG", "Title: " + title);
             android.util.Log.d("MTV_DEBUG", "Year: " + year);
             
-            runOnUiThread(() -> showToast("OnStream-style extraction starting..."));
-            
-            // Use OnStream-style multi-source extractor
-            OnStreamExtractor.resolveStream(mediaId, mediaType, title, year, new OnStreamExtractor.StreamCallback() {
-                @Override
-                public void onStreamResolved(OnStreamExtractor.StreamResult result) {
-                    runOnUiThread(() -> {
-                        if (result.success) {
-                            android.util.Log.d("MTV_DEBUG", "✓ OnStream extraction successful");
-                            android.util.Log.d("MTV_DEBUG", "Stream URL: " + result.url);
-                            android.util.Log.d("MTV_DEBUG", "MIME Type: " + result.mimeType);
-                            android.util.Log.d("MTV_DEBUG", "Source Used: " + result.sourceUsed);
-                            
-                            // Validate stream URL before launching player
-                            if (result.url == null || result.url.isEmpty()) {
-                                android.util.Log.e("MTV_DEBUG", "✗ Stream URL is null or empty");
-                                showToast("Stream URL is invalid");
-                                return;
-                            }
-                            
-                            // Log stream details for debugging
-                            android.util.Log.d("MTV_DEBUG", "=== STREAM DETAILS ===");
-                            android.util.Log.d("MTV_DEBUG", "URL: " + result.url);
-                            android.util.Log.d("MTV_DEBUG", "MIME: " + result.mimeType);
-                            android.util.Log.d("MTV_DEBUG", "Headers count: " + (result.headers != null ? result.headers.size() : 0));
-                            
-                            try {
-                                Intent playerIntent = new Intent(MainActivity.this, VideoPlayerActivity.class);
-                                playerIntent.putExtra(VideoPlayerActivity.EXTRA_VIDEO_URL, result.url);
-                                playerIntent.putExtra(VideoPlayerActivity.EXTRA_VIDEO_TITLE, title);
-                                playerIntent.putExtra(VideoPlayerActivity.EXTRA_HEADERS, result.headers);
-                                
-                                startActivity(playerIntent);
-                                android.util.Log.d("MTV_DEBUG", "✓ Opened video player with OnStream-extracted stream");
-                                showToast("Opening video player...");
-                            } catch (Exception e) {
-                                android.util.Log.e("MTV_DEBUG", "Failed to open video player: " + e.getMessage());
-                                showToast("Failed to open video player: " + e.getMessage());
-                            }
-                        } else {
-                            android.util.Log.e("MTV_DEBUG", "✗ OnStream extraction failed: " + result.error);
-                            showToast("Stream extraction failed. Please try another movie.");
-                        }
-                    });
+            runOnUiThread(() -> {
+                try {
+                    String vidlinkUrl = buildVidLinkUrl(mediaId, mediaType, season, episode);
+                    if (vidlinkUrl != null) {
+                        android.util.Log.d("MTV_DEBUG", "Opening VidLink URL: " + vidlinkUrl);
+                        showToast("Opening VidLink player...");
+                        
+                        // Load VidLink URL directly in the current WebView
+                        webView.loadUrl(vidlinkUrl);
+                        
+                        android.util.Log.d("MTV_DEBUG", "✓ Opened VidLink player successfully");
+                    } else {
+                        android.util.Log.e("MTV_DEBUG", "✗ Failed to build VidLink URL");
+                        showToast("Unable to create VidLink URL for this content");
+                    }
+                } catch (Exception e) {
+                    android.util.Log.e("MTV_DEBUG", "Failed to open VidLink: " + e.getMessage());
+                    showToast("Failed to open VidLink player: " + e.getMessage());
                 }
             });
         }
         
+        /**
+         * Build VidLink URL based on media type and TMDB ID
+         */
+        private String buildVidLinkUrl(String mediaId, String mediaType, String season, String episode) {
+            if (mediaId == null || mediaId.trim().isEmpty()) {
+                android.util.Log.e("MTV_DEBUG", "Missing TMDB ID");
+                return null;
+            }
+            
+            if ("movie".equals(mediaType)) {
+                // Movie: https://vidlink.pro/movie/{tmdbId}
+                return "https://vidlink.pro/movie/" + mediaId;
+            } else if ("tv".equals(mediaType)) {
+                // TV Show: https://vidlink.pro/tv/{tmdbId}/{season}/{episode}
+                if (season != null && episode != null && !season.trim().isEmpty() && !episode.trim().isEmpty()) {
+                    return "https://vidlink.pro/tv/" + mediaId + "/" + season + "/" + episode;
+                } else {
+                    // Return base TV URL - VidLink will handle episode selection
+                    return "https://vidlink.pro/tv/" + mediaId;
+                }
+            } else {
+                android.util.Log.e("MTV_DEBUG", "Unsupported media type: " + mediaType);
+                return null;
+            }
+        }
+        
         private void showToast(String message) {
             Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
+        }
+        
+        @JavascriptInterface
+        public void downloadContent(String mediaId, String mediaType, String title, String year, String season, String episode) {
+            android.util.Log.d("MTV_DEBUG", "=== downloadContent called ===");
+            android.util.Log.d("MTV_DEBUG", "Media ID: " + mediaId);
+            android.util.Log.d("MTV_DEBUG", "Media Type: " + mediaType);
+            android.util.Log.d("MTV_DEBUG", "Title: " + title);
+            android.util.Log.d("MTV_DEBUG", "Season: " + season + ", Episode: " + episode);
+            
+            runOnUiThread(() -> {
+                try {
+                    String vidlinkUrl = buildVidLinkUrl(mediaId, mediaType, season, episode);
+                    if (vidlinkUrl != null) {
+                        android.util.Log.d("MTV_DEBUG", "Starting download from: " + vidlinkUrl);
+                        showToast("Starting download...");
+                        
+                        // Start download
+                        downloadManager.downloadVideo(vidlinkUrl, title, mediaType, season, episode)
+                            .thenAccept(downloadInfo -> {
+                                runOnUiThread(() -> {
+                                    showToast("Download started: " + downloadInfo.filename);
+                                    android.util.Log.d("MTV_DEBUG", "✓ Download started successfully");
+                                });
+                            })
+                            .exceptionally(throwable -> {
+                                runOnUiThread(() -> {
+                                    showToast("Download failed: " + throwable.getMessage());
+                                    android.util.Log.e("MTV_DEBUG", "✗ Download failed: " + throwable.getMessage());
+                                });
+                                return null;
+                            });
+                    } else {
+                        android.util.Log.e("MTV_DEBUG", "✗ Failed to build VidLink URL for download");
+                        showToast("Unable to create download URL for this content");
+                    }
+                } catch (Exception e) {
+                    android.util.Log.e("MTV_DEBUG", "Failed to start download: " + e.getMessage());
+                    showToast("Failed to start download: " + e.getMessage());
+                }
+            });
+        }
+        
+        @JavascriptInterface
+        public String getActiveDownloads() {
+            try {
+                List<DownloadInfo> downloads = downloadManager.getActiveDownloads();
+                // Convert to JSON string for JavaScript
+                StringBuilder json = new StringBuilder("[");
+                for (int i = 0; i < downloads.size(); i++) {
+                    DownloadInfo download = downloads.get(i);
+                    if (i > 0) json.append(",");
+                    json.append("{");
+                    json.append("\"id\":" + download.downloadId + ",");
+                    json.append("\"title\":\"" + download.title.replace("\"", "\\\"") + "\",");
+                    json.append("\"filename\":\"" + download.filename.replace("\"", "\\\"") + "\",");
+                    json.append("\"progress\":" + download.progress + ",");
+                    json.append("\"status\":\"" + download.status + "\",");
+                    json.append("\"type\":\"" + download.type + "\"");
+                    if (download.season != null) {
+                        json.append(",\"season\":\"" + download.season + "\"");
+                        json.append(",\"episode\":\"" + download.episode + "\"");
+                    }
+                    json.append("}");
+                }
+                json.append("]");
+                return json.toString();
+            } catch (Exception e) {
+                android.util.Log.e("MTV_DEBUG", "Failed to get active downloads: " + e.getMessage());
+                return "[]";
+            }
+        }
+        
+        @JavascriptInterface
+        public String getCompletedDownloads() {
+            try {
+                List<DownloadInfo> downloads = downloadManager.getCompletedDownloads();
+                // Convert to JSON string for JavaScript
+                StringBuilder json = new StringBuilder("[");
+                for (int i = 0; i < downloads.size(); i++) {
+                    DownloadInfo download = downloads.get(i);
+                    if (i > 0) json.append(",");
+                    json.append("{");
+                    json.append("\"title\":\"" + download.title.replace("\"", "\\\"") + "\",");
+                    json.append("\"filename\":\"" + download.filename.replace("\"", "\\\"") + "\",");
+                    json.append("\"filePath\":\"" + download.filePath.replace("\"", "\\\"") + "\",");
+                    json.append("\"type\":\"" + download.type + "\"");
+                    if (download.season != null) {
+                        json.append(",\"season\":\"" + download.season + "\"");
+                        json.append(",\"episode\":\"" + download.episode + "\"");
+                    }
+                    json.append("}");
+                }
+                json.append("]");
+                return json.toString();
+            } catch (Exception e) {
+                android.util.Log.e("MTV_DEBUG", "Failed to get completed downloads: " + e.getMessage());
+                return "[]";
+            }
+        }
+        
+        @JavascriptInterface
+        public void cancelDownload(String downloadId) {
+            try {
+                long id = Long.parseLong(downloadId);
+                downloadManager.cancelDownload(id);
+                showToast("Download cancelled");
+            } catch (Exception e) {
+                android.util.Log.e("MTV_DEBUG", "Failed to cancel download: " + e.getMessage());
+                showToast("Failed to cancel download");
+            }
+        }
+        
+        @JavascriptInterface
+        public void playDownloadedFile(String filePath) {
+            try {
+                Intent intent = new Intent(Intent.ACTION_VIEW);
+                intent.setDataAndType(Uri.parse("file://" + filePath), "video/*");
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                startActivity(intent);
+            } catch (Exception e) {
+                android.util.Log.e("MTV_DEBUG", "Failed to play downloaded file: " + e.getMessage());
+                showToast("Failed to open video file");
+            }
         }
         
         @JavascriptInterface
@@ -178,6 +325,59 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 android.util.Log.e("MTV_DEBUG", "Failed to open external URL: " + e.getMessage());
             }
+        }
+    }
+    
+    // DownloadListener implementation
+    @Override
+    public void onDownloadStarted(DownloadInfo download) {
+        runOnUiThread(() -> {
+            Log.d("MTV_DEBUG", "Download started: " + download.title);
+            // Notify frontend via JavaScript if needed
+            if (webView != null) {
+                webView.evaluateJavascript("if(window.app && window.app.onDownloadStarted) window.app.onDownloadStarted(" + download.downloadId + ");", null);
+            }
+        });
+    }
+    
+    @Override
+    public void onDownloadProgress(DownloadInfo download, int progress) {
+        runOnUiThread(() -> {
+            // Notify frontend via JavaScript
+            if (webView != null) {
+                webView.evaluateJavascript("if(window.app && window.app.onDownloadProgress) window.app.onDownloadProgress(" + download.downloadId + ", " + progress + ");", null);
+            }
+        });
+    }
+    
+    @Override
+    public void onDownloadCompleted(DownloadInfo download, String filePath) {
+        runOnUiThread(() -> {
+            Log.d("MTV_DEBUG", "Download completed: " + download.title + " at " + filePath);
+            // Notify frontend via JavaScript
+            if (webView != null) {
+                webView.evaluateJavascript("if(window.app && window.app.onDownloadCompleted) window.app.onDownloadCompleted(" + download.downloadId + ", '" + filePath + "');", null);
+            }
+        });
+    }
+    
+    @Override
+    public void onDownloadFailed(DownloadInfo download, String error) {
+        runOnUiThread(() -> {
+            Log.e("MTV_DEBUG", "Download failed: " + download.title + " - " + error);
+            // Notify frontend via JavaScript
+            if (webView != null) {
+                webView.evaluateJavascript("if(window.app && window.app.onDownloadFailed) window.app.onDownloadFailed(" + download.downloadId + ", '" + error + "');", null);
+            }
+        });
+    }
+    
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (downloadManager != null) {
+            downloadManager.removeDownloadListener(this);
+            downloadManager.cleanup();
         }
     }
 }

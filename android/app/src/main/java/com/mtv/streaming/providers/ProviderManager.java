@@ -31,19 +31,19 @@ public class ProviderManager {
     }
     
     /**
-     * Initialize CloudStream-style extractors
+     * Initialize stream providers
      */
     private void initializeProviders() {
-        Log.d(TAG, "Initializing CloudStream-style extractors...");
+        Log.d(TAG, "Initializing stream providers...");
         
         try {
-            // Add working CloudStream-style extractors
-            providers.add(new CloudStreamVidsrcNetProvider());
-            providers.add(new VidsrcProvider()); // Add working Vidsrc.to provider
-            providers.add(new SuperStreamProvider()); // Add working SuperStream provider
+            // Add VidLink provider as primary
+            providers.add(new VidLinkProvider());
+            providers.add(new VidsrcProvider()); // Add working Vidsrc.to provider as fallback
+            providers.add(new SuperStreamProvider()); // Add working SuperStream provider as fallback
             
         } catch (Exception e) {
-            Log.e(TAG, "Error initializing extractors: " + e.getMessage());
+            Log.e(TAG, "Error initializing providers: " + e.getMessage());
         }
         
         // Sort by priority

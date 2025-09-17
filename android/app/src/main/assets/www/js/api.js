@@ -108,6 +108,15 @@ class APIService {
     return this.request(`/tv/${id}`, { append_to_response: 'credits,videos,similar' });
   }
 
+  // TV Season and Episode methods
+  async getTVSeasonDetails(tvId, seasonNumber) {
+    return this.request(`/tv/${tvId}/season/${seasonNumber}`);
+  }
+
+  async getTVEpisodeDetails(tvId, seasonNumber, episodeNumber) {
+    return this.request(`/tv/${tvId}/season/${seasonNumber}/episode/${episodeNumber}`);
+  }
+
   // Genre methods
   async getMovieGenres() {
     return this.request('/genre/movie/list');
