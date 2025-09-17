@@ -7,21 +7,16 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.database.Cursor;
 import android.net.Uri;
-import android.os.Bundle;
 import android.os.Environment;
-import android.os.Handler;
-import android.os.Looper;
 import android.util.Log;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
+import android.os.Handler;
+import android.os.Looper;
 
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -512,7 +507,7 @@ public class StreamDownloadManager {
                 // Check if this is an HLS manifest URL or content
                 if (streamUrl.contains(".m3u8") || streamUrl.contains("EXTM3U")) {
                     Log.d(TAG, "🎬 HLS stream detected, using HLS downloader");
-                    return handleHLSDownload(streamUrl, title, type, season, episode, originalUrl);
+                    return handleHLSDownload(streamUrl, title, type, season, episode, originalUrl).get();
                 }
                 
                 String filename = generateFilename(title, type, season, episode);
@@ -590,84 +585,86 @@ public class StreamDownloadManager {
     /**
      * Handle HLS manifest download and conversion
      */
-    private DownloadInfo handleHLSDownload(String streamUrl, String title, String type, String season, String episode, String originalUrl) {
-        try {
-            Log.d(TAG, "🎬 Processing HLS download for: " + title);
-            
-            String filename = generateFilename(title, type, season, episode);
-            
-            // Create a pseudo download info for tracking
-            DownloadInfo downloadInfo = new DownloadInfo(-1, title, originalUrl, streamUrl, 
-                                                        filename, type, season, episode);
-            
-            File downloadsDir = new File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "MTV_Downloads");
-            if (!downloadsDir.exists()) {
-                downloadsDir.mkdirs();
-            }
-            
-            File destFile = new File(downloadsDir, filename);
-            downloadInfo.filePath = destFile.getAbsolutePath();
-            downloadInfo.status = "Processing HLS";
-            
-            // Notify listeners that download started
-            for (DownloadListener listener : listeners) {
-                listener.onDownloadStarted(downloadInfo);
-            }
-            
-            // Start HLS processing in background
-            CompletableFuture.runAsync(() -> {
-                try {
-                    String m3u8Content;
-                    
-                    // Check if streamUrl is already M3U8 content or a URL
-                    if (streamUrl.contains("#EXTM3U")) {
-                        m3u8Content = streamUrl;
-                        streamUrl = originalUrl; // Use original URL as base
-                    } else {
-                        // Fetch M3U8 content from URL
-                        m3u8Content = fetchM3U8Content(streamUrl);
-                        if (m3u8Content == null) {
-                            throw new Exception("Failed to fetch M3U8 content");
+    private CompletableFuture<DownloadInfo> handleHLSDownload(String streamUrl, String title, String type, String season, String episode, String originalUrl) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                Log.d(TAG, "🎬 Processing HLS download for: " + title);
+                
+                String filename = generateFilename(title, type, season, episode);
+                
+                // Create a pseudo download info for tracking
+                DownloadInfo downloadInfo = new DownloadInfo(-1, title, originalUrl, streamUrl, 
+                                                            filename, type, season, episode);
+                
+                File downloadsDir = new File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "MTV_Downloads");
+                if (!downloadsDir.exists()) {
+                    downloadsDir.mkdirs();
+                }
+                
+                File destFile = new File(downloadsDir, filename);
+                downloadInfo.filePath = destFile.getAbsolutePath();
+                downloadInfo.status = "Processing HLS";
+                
+                // Notify listeners that download started
+                for (DownloadListener listener : listeners) {
+                    listener.onDownloadStarted(downloadInfo);
+                }
+                
+                // Start HLS processing in background
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        String m3u8Content;
+                        
+                        // Check if streamUrl is already M3U8 content or a URL
+                        if (streamUrl.contains("#EXTM3U")) {
+                            m3u8Content = streamUrl;
+                            streamUrl = originalUrl; // Use original URL as base
+                        } else {
+                            // Fetch M3U8 content from URL
+                            m3u8Content = fetchM3U8Content(streamUrl);
+                            if (m3u8Content == null) {
+                                throw new Exception("Failed to fetch M3U8 content");
+                            }
+                        }
+                        
+                        // Use HLS downloader to process the manifest
+                        HLSDownloader hlsDownloader = HLSDownloader.getInstance(context);
+                        Bundle headers = new Bundle();
+                        headers.putString("Referer", "https://vidlink.pro/");
+                        headers.putString("Origin", "https://vidlink.pro");
+                        
+                        String outputPath = hlsDownloader.downloadHLS(m3u8Content, title, streamUrl, headers).get();
+                        
+                        // Update download info
+                        downloadInfo.status = "Completed";
+                        downloadInfo.progress = 100;
+                        downloadInfo.filePath = outputPath;
+                        
+                        // Notify completion
+                        for (DownloadListener listener : listeners) {
+                            listener.onDownloadCompleted(downloadInfo, outputPath);
+                        }
+                        
+                        Log.d(TAG, "✅ HLS download completed: " + outputPath);
+                        
+                    } catch (Exception e) {
+                        Log.e(TAG, "❌ HLS download failed: " + e.getMessage());
+                        
+                        downloadInfo.status = "Failed";
+                        
+                        for (DownloadListener listener : listeners) {
+                            listener.onDownloadFailed(downloadInfo, "HLS processing failed: " + e.getMessage());
                         }
                     }
-                    
-                    // Use HLS downloader to process the manifest
-                    HLSDownloader hlsDownloader = HLSDownloader.getInstance(context);
-                    Bundle headers = new Bundle();
-                    headers.putString("Referer", "https://vidlink.pro/");
-                    headers.putString("Origin", "https://vidlink.pro");
-                    
-                    String outputPath = hlsDownloader.downloadHLS(m3u8Content, title, streamUrl, headers).get();
-                    
-                    // Update download info
-                    downloadInfo.status = "Completed";
-                    downloadInfo.progress = 100;
-                    downloadInfo.filePath = outputPath;
-                    
-                    // Notify completion
-                    for (DownloadListener listener : listeners) {
-                        listener.onDownloadCompleted(downloadInfo, outputPath);
-                    }
-                    
-                    Log.d(TAG, "✅ HLS download completed: " + outputPath);
-                    
-                } catch (Exception e) {
-                    Log.e(TAG, "❌ HLS download failed: " + e.getMessage());
-                    
-                    downloadInfo.status = "Failed";
-                    
-                    for (DownloadListener listener : listeners) {
-                        listener.onDownloadFailed(downloadInfo, "HLS processing failed: " + e.getMessage());
-                    }
-                }
-            });
-            
-            return downloadInfo;
-            
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to start HLS download: " + e.getMessage());
-            throw new RuntimeException("Failed to start HLS download: " + e.getMessage());
-        }
+                });
+                
+                return downloadInfo;
+                
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to start HLS download: " + e.getMessage());
+                throw new RuntimeException("Failed to start HLS download: " + e.getMessage());
+            }
+        });
     }
     
     /**
