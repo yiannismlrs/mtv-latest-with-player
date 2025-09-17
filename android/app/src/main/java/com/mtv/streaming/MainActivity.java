@@ -191,10 +191,6 @@ public class MainActivity extends Activity implements StreamDownloadManager.Down
             }
         }
         
-        private void showToast(String message) {
-            Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
-        }
-        
         @JavascriptInterface
         public void downloadContent(String mediaId, String mediaType, String title, String year, String season, String episode) {
             android.util.Log.d("MTV_DEBUG", "=== downloadContent called ===");
@@ -208,7 +204,7 @@ public class MainActivity extends Activity implements StreamDownloadManager.Down
                     String embedUrl = buildVidLinkUrl(mediaId, mediaType, season, episode);
                     if (embedUrl != null) {
                         android.util.Log.d("MTV_DEBUG", "Starting download from embed: " + embedUrl);
-                        showToast("Starting download...");
+                        showToast("Analyzing video source...");
                         
                         // Start download with embed URL
                         downloadManager.downloadVideo(embedUrl, title, mediaType, season, episode)
@@ -220,11 +216,11 @@ public class MainActivity extends Activity implements StreamDownloadManager.Down
                             })
                             .exceptionally(throwable -> {
                                 runOnUiThread(() -> {
-                                    showToast("Download failed: " + throwable.getMessage());
                                     android.util.Log.e("MTV_DEBUG", "✗ Download failed: " + throwable.getMessage());
-                                        showToast("Stream protected. Trying alternative download methods...");
-                                        // Try alternative download methods
-                                        tryAlternativeDownload(title, year, mediaType, season, episode);
+                                    showToast("Stream protected. Opening alternative download options...");
+                                    // Try alternative download methods
+                                    tryAlternativeDownload(title, year, mediaType, season, episode);
+                                });
                                 return null;
                             });
                     } else {
@@ -356,6 +352,10 @@ public class MainActivity extends Activity implements StreamDownloadManager.Down
             } catch (Exception e) {
                 android.util.Log.e("MTV_DEBUG", "Failed to open external URL: " + e.getMessage());
             }
+        }
+        
+        private void showToast(String message) {
+            Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
         }
     }
     
