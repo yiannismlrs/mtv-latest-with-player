@@ -338,7 +338,9 @@ public class StreamDownloadManager {
     private CompletableFuture<DownloadInfo> tryAlternativeDownloadMethods(String embedUrl, String title, String type, String season, String episode) {
         Log.d(TAG, "🔄 Trying alternative download methods...");
         
-        return CompletableFuture.supplyAsync(() -> {
+        CompletableFuture<DownloadInfo> future = new CompletableFuture<>();
+        
+        CompletableFuture.runAsync(() -> {
             try {
                 // Method 1: Try known working stream URLs based on TMDB ID
                 String tmdbId = extractTmdbId(embedUrl);
@@ -359,7 +361,8 @@ public class StreamDownloadManager {
                             
                             if (downloadInfo.progress > 0 || "Downloading".equals(downloadInfo.status)) {
                                 Log.d(TAG, "✓ Alternative URL working: " + altUrl);
-                                return downloadInfo;
+                                future.complete(downloadInfo);
+                                return;
                             } else {
                                 // Cancel this attempt and try next
                                 downloadManager.remove(downloadInfo.downloadId);
@@ -373,13 +376,16 @@ public class StreamDownloadManager {
                 }
                 
                 // Method 2: Use external downloader approach
-                return useExternalDownloaderApproach(embedUrl, title, type, season, episode);
+                DownloadInfo result = useExternalDownloaderApproach(embedUrl, title, type, season, episode).get();
+                future.complete(result);
                 
             } catch (Exception e) {
                 Log.e(TAG, "All alternative methods failed: " + e.getMessage());
-                throw new RuntimeException("All download methods failed: " + e.getMessage());
+                future.completeExceptionally(new RuntimeException("All download methods failed: " + e.getMessage()));
             }
         });
+        
+        return future;
     }
     
     /**
