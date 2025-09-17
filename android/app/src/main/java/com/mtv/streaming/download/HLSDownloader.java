@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 
 /**
- * HLS Downloader that converts M3U8 playlists to MP4 files
+ * Simple HLS Downloader that converts M3U8 playlists to MP4 files
  * Downloads all video segments and combines them into a single file
  */
 public class HLSDownloader {
@@ -112,16 +112,19 @@ public class HLSDownloader {
         List<String> segmentUrls = new ArrayList<>();
         
         try {
+            Log.d(TAG, "Parsing M3U8 content...");
+            Log.d(TAG, "M3U8 preview: " + m3u8Content.substring(0, Math.min(500, m3u8Content.length())));
+            
             String[] lines = m3u8Content.split("\n");
             String currentBaseUrl = baseUrl;
             
-            // First, check if this is a master playlist (contains other playlists)
+            // Check if this is a master playlist (contains other playlists)
             boolean isMasterPlaylist = m3u8Content.contains("EXT-X-STREAM-INF");
             
             if (isMasterPlaylist) {
                 Log.d(TAG, "Master playlist detected, extracting best quality stream");
                 
-                // Find the highest quality stream
+                // Find the highest quality stream (1080p from your example)
                 String bestStreamUrl = null;
                 int bestBandwidth = 0;
                 
@@ -153,24 +156,13 @@ public class HLSDownloader {
                     Log.d(TAG, "Best quality stream: " + bestStreamUrl + " (bandwidth: " + bestBandwidth + ")");
                     
                     // Convert relative URL to absolute
-                    if (!bestStreamUrl.startsWith("http")) {
-                        if (bestStreamUrl.startsWith("/")) {
-                            // Extract host from base URL
-                            try {
-                                URL url = new URL(baseUrl);
-                                bestStreamUrl = url.getProtocol() + "://" + url.getHost() + bestStreamUrl;
-                            } catch (Exception e) {
-                                bestStreamUrl = baseUrl + bestStreamUrl;
-                            }
-                        } else {
-                            bestStreamUrl = baseUrl + "/" + bestStreamUrl;
-                        }
-                    }
+                    String fullStreamUrl = resolveUrl(bestStreamUrl, baseUrl);
+                    Log.d(TAG, "Full stream URL: " + fullStreamUrl);
                     
                     // Now fetch the actual segment playlist
-                    String segmentPlaylist = fetchM3U8Content(bestStreamUrl);
+                    String segmentPlaylist = fetchM3U8Content(fullStreamUrl);
                     if (segmentPlaylist != null) {
-                        return parseM3U8(segmentPlaylist, bestStreamUrl);
+                        return parseM3U8(segmentPlaylist, fullStreamUrl);
                     }
                 }
             } else {
@@ -182,24 +174,7 @@ public class HLSDownloader {
                     
                     if (!line.startsWith("#") && !line.isEmpty()) {
                         // This should be a segment URL
-                        String segmentUrl = line;
-                        
-                        // Convert relative URL to absolute
-                        if (!segmentUrl.startsWith("http")) {
-                            if (segmentUrl.startsWith("/")) {
-                                try {
-                                    URL url = new URL(currentBaseUrl);
-                                    segmentUrl = url.getProtocol() + "://" + url.getHost() + segmentUrl;
-                                } catch (Exception e) {
-                                    segmentUrl = currentBaseUrl + segmentUrl;
-                                }
-                            } else {
-                                // Get directory from current base URL
-                                String baseDir = currentBaseUrl.substring(0, currentBaseUrl.lastIndexOf("/") + 1);
-                                segmentUrl = baseDir + segmentUrl;
-                            }
-                        }
-                        
+                        String segmentUrl = resolveUrl(line, currentBaseUrl);
                         segmentUrls.add(segmentUrl);
                         Log.d(TAG, "Found segment: " + segmentUrl);
                     }
@@ -215,28 +190,52 @@ public class HLSDownloader {
     }
     
     /**
+     * Resolve relative URLs to absolute URLs
+     */
+    private String resolveUrl(String url, String baseUrl) {
+        if (url.startsWith("http")) {
+            return url; // Already absolute
+        }
+        
+        try {
+            if (url.startsWith("/")) {
+                // Absolute path - extract host from base URL
+                URL base = new URL(baseUrl);
+                return base.getProtocol() + "://" + base.getHost() + url;
+            } else {
+                // Relative path - get directory from base URL
+                String baseDir = baseUrl.substring(0, baseUrl.lastIndexOf("/") + 1);
+                return baseDir + url;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Error resolving URL: " + e.getMessage());
+            return baseUrl + "/" + url;
+        }
+    }
+    
+    /**
      * Fetch M3U8 content from URL
      */
     private String fetchM3U8Content(String url) {
         try {
+            Log.d(TAG, "Fetching M3U8 from: " + url);
+            
             HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
             
-            // Set headers
+            // Set headers for videostr.net (from your M3U8 file)
             connection.setRequestProperty("User-Agent", 
                 "Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36");
             connection.setRequestProperty("Accept", "*/*");
             connection.setRequestProperty("Accept-Language", "en-US,en;q=0.9");
-            
-            if (url.contains("vidlink")) {
-                connection.setRequestProperty("Referer", "https://vidlink.pro/");
-            } else if (url.contains("vidsrc")) {
-                connection.setRequestProperty("Referer", "https://vidsrc.to/");
-            }
+            connection.setRequestProperty("Referer", "https://videostr.net/");
+            connection.setRequestProperty("Origin", "https://videostr.net");
             
             connection.setConnectTimeout(10000);
             connection.setReadTimeout(15000);
             
             int responseCode = connection.getResponseCode();
+            Log.d(TAG, "M3U8 fetch response: " + responseCode);
+            
             if (responseCode != 200) {
                 Log.w(TAG, "Failed to fetch M3U8: " + responseCode);
                 return null;
@@ -299,11 +298,13 @@ public class HLSDownloader {
         try {
             HttpURLConnection connection = (HttpURLConnection) new URL(segmentUrl).openConnection();
             
-            // Set headers
+            // Set headers for videostr.net
             connection.setRequestProperty("User-Agent", 
                 "Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36");
             connection.setRequestProperty("Accept", "*/*");
             connection.setRequestProperty("Accept-Language", "en-US,en;q=0.9");
+            connection.setRequestProperty("Referer", "https://videostr.net/");
+            connection.setRequestProperty("Origin", "https://videostr.net");
             
             // Add custom headers if provided
             if (headers != null) {
@@ -313,15 +314,6 @@ public class HLSDownloader {
                         connection.setRequestProperty(key, value);
                     }
                 }
-            }
-            
-            // Set referer based on segment URL
-            if (segmentUrl.contains("vidlink")) {
-                connection.setRequestProperty("Referer", "https://vidlink.pro/");
-            } else if (segmentUrl.contains("vidsrc")) {
-                connection.setRequestProperty("Referer", "https://vidsrc.to/");
-            } else if (segmentUrl.contains("videostr")) {
-                connection.setRequestProperty("Referer", "https://videostr.net/");
             }
             
             connection.setConnectTimeout(10000);
