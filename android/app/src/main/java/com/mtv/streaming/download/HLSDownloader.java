@@ -14,6 +14,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
+import java.net.URLDecoder;
 
 /**
  * Simple HLS Downloader that converts M3U8 playlists to MP4 files
@@ -114,9 +115,9 @@ public class HLSDownloader {
         try {
             Log.d(TAG, "Parsing M3U8 content...");
             Log.d(TAG, "M3U8 preview: " + m3u8Content.substring(0, Math.min(500, m3u8Content.length())));
+            Log.d(TAG, "Base URL: " + baseUrl);
             
             String[] lines = m3u8Content.split("\n");
-            String currentBaseUrl = baseUrl;
             
             // Check if this is a master playlist (contains other playlists)
             boolean isMasterPlaylist = m3u8Content.contains("EXT-X-STREAM-INF");
@@ -155,14 +156,14 @@ public class HLSDownloader {
                 if (bestStreamUrl != null) {
                     Log.d(TAG, "Best quality stream: " + bestStreamUrl + " (bandwidth: " + bestBandwidth + ")");
                     
-                    // Convert relative URL to absolute
-                    String fullStreamUrl = resolveUrl(bestStreamUrl, baseUrl);
+                    // Convert relative URL to absolute with proper host extraction
+                    String fullStreamUrl = resolveUrlWithHost(bestStreamUrl, baseUrl, m3u8Content);
                     Log.d(TAG, "Full stream URL: " + fullStreamUrl);
                     
                     // Now fetch the actual segment playlist
                     String segmentPlaylist = fetchM3U8Content(fullStreamUrl);
                     if (segmentPlaylist != null) {
-                        return parseM3U8(segmentPlaylist, fullStreamUrl);
+                        return parseM3U8(segmentPlaylist, getBaseUrlFromFullUrl(fullStreamUrl));
                     }
                 }
             } else {
@@ -174,7 +175,7 @@ public class HLSDownloader {
                     
                     if (!line.startsWith("#") && !line.isEmpty()) {
                         // This should be a segment URL
-                        String segmentUrl = resolveUrl(line, currentBaseUrl);
+                        String segmentUrl = resolveUrlWithHost(line, baseUrl, m3u8Content);
                         segmentUrls.add(segmentUrl);
                         Log.d(TAG, "Found segment: " + segmentUrl);
                     }
@@ -190,14 +191,21 @@ public class HLSDownloader {
     }
     
     /**
-     * Resolve relative URLs to absolute URLs
+     * Resolve relative URLs to absolute URLs with host extraction from M3U8 content
      */
-    private String resolveUrl(String url, String baseUrl) {
+    private String resolveUrlWithHost(String url, String baseUrl, String m3u8Content) {
         if (url.startsWith("http")) {
             return url; // Already absolute
         }
         
         try {
+            // Extract host from M3U8 content if available
+            String extractedHost = extractHostFromM3U8(m3u8Content);
+            if (extractedHost != null) {
+                Log.d(TAG, "Using extracted host: " + extractedHost);
+                return extractedHost + url;
+            }
+            
             if (url.startsWith("/")) {
                 // Absolute path - extract host from base URL
                 URL base = new URL(baseUrl);
@@ -214,6 +222,40 @@ public class HLSDownloader {
     }
     
     /**
+     * Extract host from M3U8 content (looks for host parameter)
+     */
+    private String extractHostFromM3U8(String m3u8Content) {
+        try {
+            // Look for host parameter in the M3U8 content
+            Pattern hostPattern = Pattern.compile("host=([^&\\s]+)");
+            Matcher matcher = hostPattern.matcher(m3u8Content);
+            
+            if (matcher.find()) {
+                String encodedHost = matcher.group(1);
+                // URL decode the host
+                String decodedHost = java.net.URLDecoder.decode(encodedHost, "UTF-8");
+                Log.d(TAG, "Extracted host from M3U8: " + decodedHost);
+                return decodedHost;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "Error extracting host from M3U8: " + e.getMessage());
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Get base URL from full URL (remove filename)
+     */
+    private String getBaseUrlFromFullUrl(String fullUrl) {
+        try {
+            return fullUrl.substring(0, fullUrl.lastIndexOf("/") + 1);
+        } catch (Exception e) {
+            return fullUrl;
+        }
+    }
+    
+    /**
      * Fetch M3U8 content from URL
      */
     private String fetchM3U8Content(String url) {
@@ -222,13 +264,26 @@ public class HLSDownloader {
             
             HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
             
-            // Set headers for videostr.net (from your M3U8 file)
+            // Set headers based on the URL host
             connection.setRequestProperty("User-Agent", 
                 "Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36");
             connection.setRequestProperty("Accept", "*/*");
             connection.setRequestProperty("Accept-Language", "en-US,en;q=0.9");
-            connection.setRequestProperty("Referer", "https://videostr.net/");
-            connection.setRequestProperty("Origin", "https://videostr.net");
+            
+            // Set appropriate referer based on URL
+            if (url.contains("breezeflash")) {
+                connection.setRequestProperty("Referer", "https://videostr.net/");
+                connection.setRequestProperty("Origin", "https://videostr.net");
+            } else if (url.contains("vidlink")) {
+                connection.setRequestProperty("Referer", "https://vidlink.pro/");
+                connection.setRequestProperty("Origin", "https://vidlink.pro");
+            } else if (url.contains("vidsrc")) {
+                connection.setRequestProperty("Referer", "https://vidsrc.to/");
+                connection.setRequestProperty("Origin", "https://vidsrc.to");
+            } else {
+                connection.setRequestProperty("Referer", "https://videostr.net/");
+                connection.setRequestProperty("Origin", "https://videostr.net");
+            }
             
             connection.setConnectTimeout(10000);
             connection.setReadTimeout(15000);
@@ -298,13 +353,26 @@ public class HLSDownloader {
         try {
             HttpURLConnection connection = (HttpURLConnection) new URL(segmentUrl).openConnection();
             
-            // Set headers for videostr.net
+            // Set headers based on segment URL
             connection.setRequestProperty("User-Agent", 
                 "Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36");
             connection.setRequestProperty("Accept", "*/*");
             connection.setRequestProperty("Accept-Language", "en-US,en;q=0.9");
-            connection.setRequestProperty("Referer", "https://videostr.net/");
-            connection.setRequestProperty("Origin", "https://videostr.net");
+            
+            // Set appropriate referer based on segment URL
+            if (segmentUrl.contains("breezeflash")) {
+                connection.setRequestProperty("Referer", "https://videostr.net/");
+                connection.setRequestProperty("Origin", "https://videostr.net");
+            } else if (segmentUrl.contains("vidlink")) {
+                connection.setRequestProperty("Referer", "https://vidlink.pro/");
+                connection.setRequestProperty("Origin", "https://vidlink.pro");
+            } else if (segmentUrl.contains("vidsrc")) {
+                connection.setRequestProperty("Referer", "https://vidsrc.to/");
+                connection.setRequestProperty("Origin", "https://vidsrc.to");
+            } else {
+                connection.setRequestProperty("Referer", "https://videostr.net/");
+                connection.setRequestProperty("Origin", "https://videostr.net");
+            }
             
             // Add custom headers if provided
             if (headers != null) {
