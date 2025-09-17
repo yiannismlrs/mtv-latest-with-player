@@ -204,20 +204,24 @@ public class MainActivity extends Activity implements StreamDownloadManager.Down
                     String embedUrl = buildVidLinkUrl(mediaId, mediaType, season, episode);
                     if (embedUrl != null) {
                         android.util.Log.d("MTV_DEBUG", "Starting download from embed: " + embedUrl);
-                        showToast("Analyzing video source...");
+                        showToast("Extracting video stream...");
                         
                         // Start download with embed URL
                         downloadManager.downloadVideo(embedUrl, title, mediaType, season, episode)
                             .thenAccept(downloadInfo -> {
                                 runOnUiThread(() -> {
-                                    showToast("Download started: " + downloadInfo.filename);
+                                    if (downloadInfo.status.equals("Processing HLS")) {
+                                        showToast("Processing video segments...");
+                                    } else {
+                                        showToast("Download started: " + downloadInfo.filename);
+                                    }
                                     android.util.Log.d("MTV_DEBUG", "✓ Download started successfully");
                                 });
                             })
                             .exceptionally(throwable -> {
                                 runOnUiThread(() -> {
                                     android.util.Log.e("MTV_DEBUG", "✗ Download failed: " + throwable.getMessage());
-                                    showToast("Stream protected. Opening alternative download options...");
+                                    showToast("Download failed. Opening alternative options...");
                                     // Try alternative download methods
                                     tryAlternativeDownload(title, year, mediaType, season, episode);
                                 });

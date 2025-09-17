@@ -249,6 +249,16 @@ public class StreamDownloadManager {
     }
     
     /**
+     * Check if content is an HLS manifest
+     */
+    private boolean isHLSManifest(String content) {
+        return content != null && 
+               (content.contains("#EXTM3U") || 
+                content.contains("#EXT-X-STREAM-INF") || 
+                content.contains("#EXT-X-TARGETDURATION"));
+    }
+    
+    /**
      * Extract stream using JavaScript injection
      */
     private void extractWithJavaScript(WebView webView, CompletableFuture<String> future, 
@@ -494,6 +504,12 @@ public class StreamDownloadManager {
                                                               String season, String episode, String originalUrl) {
         return CompletableFuture.supplyAsync(() -> {
             try {
+                // Check if this is an HLS manifest URL or content
+                if (streamUrl.contains(".m3u8") || streamUrl.contains("EXTM3U")) {
+                    Log.d(TAG, "🎬 HLS stream detected, using HLS downloader");
+                    return handleHLSDownload(streamUrl, title, type, season, episode, originalUrl);
+                }
+                
                 String filename = generateFilename(title, type, season, episode);
                 
                 Log.d(TAG, "📥 Starting direct download:");
@@ -564,6 +580,132 @@ public class StreamDownloadManager {
                 throw new RuntimeException("Failed to start download: " + e.getMessage());
             }
         });
+    }
+    
+    /**
+     * Handle HLS manifest download and conversion
+     */
+    private DownloadInfo handleHLSDownload(String streamUrl, String title, String type, String season, String episode, String originalUrl) {
+        try {
+            Log.d(TAG, "🎬 Processing HLS download for: " + title);
+            
+            String filename = generateFilename(title, type, season, episode);
+            
+            // Create a pseudo download info for tracking
+            DownloadInfo downloadInfo = new DownloadInfo(-1, title, originalUrl, streamUrl, 
+                                                        filename, type, season, episode);
+            
+            File downloadsDir = new File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), "MTV_Downloads");
+            if (!downloadsDir.exists()) {
+                downloadsDir.mkdirs();
+            }
+            
+            File destFile = new File(downloadsDir, filename);
+            downloadInfo.filePath = destFile.getAbsolutePath();
+            downloadInfo.status = "Processing HLS";
+            
+            // Notify listeners that download started
+            for (DownloadListener listener : listeners) {
+                listener.onDownloadStarted(downloadInfo);
+            }
+            
+            // Start HLS processing in background
+            CompletableFuture.runAsync(() -> {
+                try {
+                    String m3u8Content;
+                    
+                    // Check if streamUrl is already M3U8 content or a URL
+                    if (streamUrl.contains("#EXTM3U")) {
+                        m3u8Content = streamUrl;
+                        streamUrl = originalUrl; // Use original URL as base
+                    } else {
+                        // Fetch M3U8 content from URL
+                        m3u8Content = fetchM3U8Content(streamUrl);
+                        if (m3u8Content == null) {
+                            throw new Exception("Failed to fetch M3U8 content");
+                        }
+                    }
+                    
+                    // Use HLS downloader to process the manifest
+                    HLSDownloader hlsDownloader = HLSDownloader.getInstance(context);
+                    Bundle headers = new Bundle();
+                    headers.putString("Referer", "https://vidlink.pro/");
+                    headers.putString("Origin", "https://vidlink.pro");
+                    
+                    String outputPath = hlsDownloader.downloadHLS(m3u8Content, title, streamUrl, headers).get();
+                    
+                    // Update download info
+                    downloadInfo.status = "Completed";
+                    downloadInfo.progress = 100;
+                    downloadInfo.filePath = outputPath;
+                    
+                    // Notify completion
+                    for (DownloadListener listener : listeners) {
+                        listener.onDownloadCompleted(downloadInfo, outputPath);
+                    }
+                    
+                    Log.d(TAG, "✅ HLS download completed: " + outputPath);
+                    
+                } catch (Exception e) {
+                    Log.e(TAG, "❌ HLS download failed: " + e.getMessage());
+                    
+                    downloadInfo.status = "Failed";
+                    
+                    for (DownloadListener listener : listeners) {
+                        listener.onDownloadFailed(downloadInfo, "HLS processing failed: " + e.getMessage());
+                    }
+                }
+            });
+            
+            return downloadInfo;
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to start HLS download: " + e.getMessage());
+            throw new RuntimeException("Failed to start HLS download: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Fetch M3U8 content from URL
+     */
+    private String fetchM3U8Content(String url) {
+        try {
+            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            
+            connection.setRequestProperty("User-Agent", 
+                "Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36");
+            connection.setRequestProperty("Accept", "*/*");
+            connection.setRequestProperty("Accept-Language", "en-US,en;q=0.9");
+            
+            if (url.contains("vidlink")) {
+                connection.setRequestProperty("Referer", "https://vidlink.pro/");
+            } else if (url.contains("vidsrc")) {
+                connection.setRequestProperty("Referer", "https://vidsrc.to/");
+            }
+            
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(15000);
+            
+            int responseCode = connection.getResponseCode();
+            if (responseCode != 200) {
+                return null;
+            }
+            
+            BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            StringBuilder content = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                content.append(line).append("\n");
+            }
+            reader.close();
+            connection.disconnect();
+            
+            return content.toString();
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Error fetching M3U8: " + e.getMessage());
+            return null;
+        }
     }
     
     /**
