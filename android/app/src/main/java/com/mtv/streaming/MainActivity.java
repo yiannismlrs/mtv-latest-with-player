@@ -12,13 +12,13 @@ import android.content.Intent;
 import android.net.Uri;
 import android.util.Log;
 import java.util.List;
-import com.mtv.streaming.download.DownloadManager;
-import com.mtv.streaming.download.DownloadManager.DownloadInfo;
-import com.mtv.streaming.download.DownloadManager.DownloadListener;
+import com.mtv.streaming.download.EmbedDownloadManager;
+import com.mtv.streaming.download.EmbedDownloadManager.DownloadInfo;
+import com.mtv.streaming.download.EmbedDownloadManager.DownloadListener;
 
 public class MainActivity extends Activity implements DownloadListener {
     private WebView webView;
-    private DownloadManager downloadManager;
+    private EmbedDownloadManager downloadManager;
     
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -100,7 +100,7 @@ public class MainActivity extends Activity implements DownloadListener {
         });
         
         // Initialize download manager
-        downloadManager = DownloadManager.getInstance(this);
+        downloadManager = EmbedDownloadManager.getInstance(this);
         downloadManager.addDownloadListener(this);
         
         // Load the local web app
@@ -200,13 +200,13 @@ public class MainActivity extends Activity implements DownloadListener {
             
             runOnUiThread(() -> {
                 try {
-                    String vidlinkUrl = buildVidLinkUrl(mediaId, mediaType, season, episode);
-                    if (vidlinkUrl != null) {
-                        android.util.Log.d("MTV_DEBUG", "Starting download from: " + vidlinkUrl);
+                    String embedUrl = buildVidLinkUrl(mediaId, mediaType, season, episode);
+                    if (embedUrl != null) {
+                        android.util.Log.d("MTV_DEBUG", "Starting download from embed: " + embedUrl);
                         showToast("Starting download...");
                         
-                        // Start download
-                        downloadManager.downloadVideo(vidlinkUrl, title, mediaType, season, episode)
+                        // Start download with embed URL
+                        downloadManager.downloadVideo(embedUrl, title, mediaType, season, episode)
                             .thenAccept(downloadInfo -> {
                                 runOnUiThread(() -> {
                                     showToast("Download started: " + downloadInfo.filename);
@@ -221,8 +221,8 @@ public class MainActivity extends Activity implements DownloadListener {
                                 return null;
                             });
                     } else {
-                        android.util.Log.e("MTV_DEBUG", "✗ Failed to build VidLink URL for download");
-                        showToast("Unable to create download URL for this content");
+                        android.util.Log.e("MTV_DEBUG", "✗ Failed to build embed URL for download");
+                        showToast("Unable to create embed URL for this content");
                     }
                 } catch (Exception e) {
                     android.util.Log.e("MTV_DEBUG", "Failed to start download: " + e.getMessage());
